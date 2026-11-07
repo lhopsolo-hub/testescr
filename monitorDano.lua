@@ -1,187 +1,173 @@
--- Diagnóstico local de vida e HUD. Não altera dados do jogo.
+-- Ative depois que o jogo confirmar que o ovo está com você.
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local player = assert(Players.LocalPlayer, "Execute no cliente.")
 local playerGui = assert(player:WaitForChild("PlayerGui", 8), "PlayerGui indisponível.")
-local old = playerGui:FindFirstChild("MonitorDanoBoss")
-if old then old:Destroy() end
 
-local DURATION = 90
-local LOG_LIMIT = 120
-local function create(class, parent, properties)
-    local object = Instance.new(class)
-    for key, value in pairs(properties) do object[key] = value end
-    object.Parent = parent
-    return object
+for _, name in ipairs({ "EsquivaOvo", "PainelOvos" }) do
+    local previous = playerGui:FindFirstChild(name)
+    if previous then previous:Destroy() end
 end
 
-local gui = create("ScreenGui", playerGui, {
-    Name = "MonitorDanoBoss", ResetOnSpawn = false, DisplayOrder = 35,
-})
-local panel = create("Frame", gui, {
-    AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -10, 1, -70),
-    Size = UDim2.new(0.85, 0, 0, 144), BackgroundColor3 = Color3.fromRGB(20, 28, 42),
-})
-create("UISizeConstraint", panel, { MaxSize = Vector2.new(320, 144) })
-create("UICorner", panel, { CornerRadius = UDim.new(0, 10) })
-
-local function control(class, text, x, y, width, height)
-    local object = create(class, panel, {
-        Position = UDim2.new(x, 5, 0, y), Size = UDim2.new(width, -10, 0, height),
-        Text = text, TextSize = 13, TextWrapped = true, Font = Enum.Font.GothamBold,
-        TextColor3 = Color3.fromRGB(240, 246, 255), BackgroundTransparency = 1,
-    })
-    if class == "TextButton" then
-        object.BackgroundTransparency = 0
-        object.BackgroundColor3 = Color3.fromRGB(43, 77, 124)
-        create("UICorner", object, { CornerRadius = UDim.new(0, 6) })
-    end
-    return object
-end
-
-control("TextLabel", "DIAGNÓSTICO DO BOSS", 0, 4, 1, 19)
-local state = control("TextLabel", "Pronto para gravar", 0, 25, 1, 22)
-local summary = control("TextLabel", "Grave perto do boss e jogue normalmente.", 0, 50, 1, 42)
-local record = control("TextButton", "Gravar", 0, 99, 0.33, 36)
-local mark = control("TextButton", "Marcar golpe", 0.33, 99, 0.34, 36)
-local report = control("TextButton", "Ver log", 0.67, 99, 0.33, 36)
-
+local DURATION = 30
+local RADIUS = 8
+local HEIGHTS = { 10, 16, 22 }
+local heightIndex = 2
 local active
-local last
-local function related(name)
-    local value = name:lower()
-    return value:find("health", 1, true) or value:find("vida", 1, true)
-        or value:find("heart", 1, true) or value:find("hitpoint", 1, true)
-        or value:find("%f[%a]hp%f[%A]") or value:find("hpbar", 1, true)
-        or value:find("currenthp", 1, true) or value:find("maxhp", 1, true)
+
+local function make(class, parent, properties)
+    local instance = Instance.new(class)
+    for name, value in pairs(properties) do instance[name] = value end
+    instance.Parent = parent
+    return instance
 end
 
-local function add(session, message)
-    if #session.log >= LOG_LIMIT then
-        session.omitted = session.omitted + 1
-        return
-    end
-    table.insert(session.log, string.format("%.1fs | %s", os.clock() - session.start, message))
+local gui = make("ScreenGui", playerGui, {
+    Name = "EsquivaOvo", ResetOnSpawn = false, DisplayOrder = 30,
+})
+local card = make("Frame", gui, {
+    Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 0, 154),
+    BackgroundColor3 = Color3.fromRGB(20, 28, 42), BorderSizePixel = 0,
+})
+make("UISizeConstraint", card, { MaxSize = Vector2.new(370, 154) })
+make("UICorner", card, { CornerRadius = UDim.new(0, 12) })
+
+local function textControl(class, text, x, y, width, height)
+    return make(class, card, {
+        Position = UDim2.new(x, 10, 0, y), Size = UDim2.new(width, -20, 0, height),
+        Text = text, TextSize = 14, TextColor3 = Color3.fromRGB(244, 248, 255),
+        Font = Enum.Font.GothamBold, BackgroundTransparency = 1, TextWrapped = true,
+    })
 end
 
-local function snapshot(session)
-    local values = {}
-    local function observe(path, value)
-        if value ~= nil then values[path] = tostring(value) end
-    end
-    local function attributes(object, prefix)
-        for key, value in pairs(object:GetAttributes()) do
-            if type(value) == "number" or (related(key) and type(value) == "string" and #value <= 45) then
-                observe(prefix .. " @" .. key, value)
-            end
-        end
-    end
-    attributes(player, "Player")
-    local character = player.Character
-    if character then
-        attributes(character, "Character")
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            observe("Humanoid.Health", humanoid.Health)
-            attributes(humanoid, "Humanoid")
-        end
-    end
-
-    for _, object in ipairs(player:GetDescendants()) do
-        if object:IsA("NumberValue") or object:IsA("IntValue") then
-            observe(object:GetFullName(), object.Value)
-        end
-    end
-    if character then
-        for _, object in ipairs(character:GetDescendants()) do
-            if object:IsA("NumberValue") or object:IsA("IntValue") then
-                observe(object:GetFullName(), object.Value)
-            end
-        end
-    end
-    for _, object in ipairs(playerGui:GetDescendants()) do
-        if not object:IsDescendantOf(gui) then
-            if object:IsA("TextLabel") or object:IsA("TextButton") then
-                local value = object.Text
-                if #value <= 45 and value:find("%d") then
-                    local path = object:GetFullName()
-                    if related(path) or related(value) or value:match("^%s*%d+%s*/%s*%d+%s*$") then
-                        observe("HUD " .. path .. " .Text", value)
-                    end
-                end
-            elseif object:IsA("GuiObject") then
-                local parent = object.Parent
-                if related(object.Name) or (parent and related(parent.Name)) then
-                    observe("HUD " .. object:GetFullName() .. " .Size", object.Size)
-                end
-            end
-        end
-    end
-
-    local changed = {}
-    for key, value in pairs(values) do
-        local before = session.previous[key]
-        if before and before ~= value then
-            table.insert(changed, { key = key, before = before, value = value })
-        elseif not before and (key == "Humanoid.Health" or related(key)) then
-            add(session, key .. " = " .. value)
-        end
-    end
-    table.sort(changed, function(a, b)
-        local importantA = related(a.key) ~= nil
-        local importantB = related(b.key) ~= nil
-        if importantA ~= importantB then return importantA end
-        return a.key < b.key
-    end)
-    for _, change in ipairs(changed) do
-        add(session, change.key .. " : " .. change.before .. " -> " .. change.value)
-    end
-    session.changes = session.changes + #changed
-    session.previous = values
-    summary.Text = string.format("Humanoid %s  ·  %d mudanças\nToque em Marcar golpe se a barra cair.",
-        values["Humanoid.Health"] or "—", session.changes)
+local title = textControl("TextLabel", "ESQUIVA DO BOSS · BossHP", 0, 7, 1, 24)
+title.TextXAlignment = Enum.TextXAlignment.Left
+local status = textControl("TextLabel", "Pegue o ovo e ative a esquiva.", 0, 37, 1, 36)
+status.TextXAlignment = Enum.TextXAlignment.Left
+local start = textControl("TextButton", "Ativar por 30 s", 0, 86, 0.64, 50)
+local height = textControl("TextButton", "Altura 16", 0.64, 86, 0.36, 50)
+start.BackgroundColor3 = Color3.fromRGB(42, 103, 195)
+height.BackgroundColor3 = Color3.fromRGB(43, 57, 79)
+for _, control in ipairs({ start, height }) do
+    control.BackgroundTransparency = 0
+    control.BorderSizePixel = 0
+    make("UICorner", control, { CornerRadius = UDim.new(0, 8) })
 end
 
-local function stop(session)
-    if active ~= session then return end
+local function finish(message)
+    local session = active
+    if not session then return end
     active = nil
-    last = session
-    record.Text = "Gravar"
-    state.Text = "Gravação concluída"
-    state.TextColor3 = Color3.fromRGB(255, 203, 125)
-    summary.Text = string.format("%d mudanças registradas.\nAbra Ver log e veja o console.", session.changes)
+    session.heartbeat:Disconnect()
+    session.healthChanged:Disconnect()
+    session.force:Destroy()
+    session.attachment:Destroy()
+    start.Text = "Ativar por 30 s"
+    status.Text = message
 end
 
-record.Activated:Connect(function()
-    if active then stop(active); return end
-    local session = { start = os.clock(), log = {}, previous = {}, changes = 0, omitted = 0 }
-    active = session
-    record.Text = "Parar"
-    state.TextColor3 = Color3.fromRGB(117, 239, 173)
-    task.spawn(function()
-        while gui.Parent and active == session do
-            local remaining = math.ceil(DURATION - (os.clock() - session.start))
-            if remaining <= 0 then break end
-            state.Text = string.format("GRAVANDO · %d s", remaining)
-            snapshot(session)
-            task.wait(0.25)
+height.Activated:Connect(function()
+    if active then return end
+    heightIndex = heightIndex % #HEIGHTS + 1
+    height.Text = "Altura " .. HEIGHTS[heightIndex]
+end)
+
+start.Activated:Connect(function()
+    if active then
+        finish("Esquiva cancelada. Movimento devolvido.")
+        return
+    end
+
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid or humanoid.Health <= 0 or root.Anchored then
+        status.Text = "Personagem indisponível."
+        return
+    end
+
+    local origin = root.Position
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Exclude
+    ray.FilterDescendantsInstances = { character }
+    ray.RespectCanCollide = true
+    local requestedHeight = HEIGHTS[heightIndex]
+    local ceiling = workspace:Raycast(origin, Vector3.new(0, requestedHeight + 3, 0), ray)
+    local lift = ceiling and math.min(requestedHeight, ceiling.Distance - 3) or requestedHeight
+    if lift < 4 then
+        status.Text = "Espaço insuficiente acima do personagem."
+        return
+    end
+
+    local attachment = make("Attachment", root, { Name = "EsquivaOvo" })
+    local force = make("AlignPosition", root, {
+        Attachment0 = attachment, Mode = Enum.PositionAlignmentMode.OneAttachment,
+        ApplyAtCenterOfMass = true, MaxForce = root.AssemblyMass * (workspace.Gravity + 650),
+        MaxVelocity = 24, Responsiveness = 18, Position = origin,
+    })
+    local began = os.clock()
+    local center = origin + Vector3.new(0, lift, 0)
+    local direction, angle = 1, 0
+    local bossHP = player:GetAttribute("BossHP")
+    local observed = type(bossHP) == "number"
+    local hits, damage = 0, 0
+    local function result()
+        if not observed then return "Teste inconclusivo: BossHP indisponível em parte da fuga." end
+        return string.format("30 s: %d quedas de BossHP · %.2f de vida perdida.", hits, damage)
+    end
+    local session = { attachment = attachment, force = force }
+    session.healthChanged = player:GetAttributeChangedSignal("BossHP"):Connect(function()
+        if os.clock() - began >= DURATION then return end
+        local value = player:GetAttribute("BossHP")
+        if type(value) ~= "number" then
+            observed = false
+        elseif type(bossHP) == "number" and value < bossHP then
+            hits = hits + 1
+            damage = damage + bossHP - value
+            direction = -direction
         end
-        if gui.Parent then stop(session) end
+        bossHP = value
+    end)
+    active = session
+    start.Text = "Parar"
+
+    session.heartbeat = RunService.Heartbeat:Connect(function(dt)
+        if player.Character ~= character or not root:IsDescendantOf(workspace) or humanoid.Health <= 0 then
+            finish("Esquiva encerrada: personagem indisponível.")
+            return
+        end
+
+        local elapsed = os.clock() - began
+        if elapsed >= DURATION + 3 then
+            finish(result())
+            return
+        end
+
+        angle = angle + direction * math.min(dt, 0.1) * 2.3
+        local ramp = math.clamp(elapsed - 0.8, 0, 1)
+        local target
+        if elapsed < DURATION then
+            target = center + Vector3.new(math.cos(angle) * RADIUS * ramp, 0, math.sin(angle) * RADIUS * ramp)
+            local hpText = type(bossHP) == "number" and string.format("%.2f", bossHP) or "—"
+            status.Text = string.format("%ds · BossHP %s · %d quedas", math.ceil(DURATION - elapsed), hpText, hits)
+        else
+            target = origin
+            status.Text = "Descendo no ponto de início..."
+            if (root.Position - target).Magnitude < 3 then
+                finish(result())
+                return
+            end
+        end
+
+        local delta = target - root.Position
+        if delta.Magnitude > 0.1 then
+            local hit = workspace:Raycast(root.Position, delta, ray)
+            if hit then target = root.Position + delta.Unit * math.max(0, hit.Distance - 3) end
+        end
+        force.Position = target
     end)
 end)
 
-mark.Activated:Connect(function()
-    if active then add(active, "MARCA MANUAL: golpe percebido no jogo") end
-end)
-
-report.Activated:Connect(function()
-    local session = active or last
-    if not session then
-        summary.Text = "Grave uma tentativa antes de abrir o log."
-        return
-    end
-    print("[Boss] INÍCIO DO RELATÓRIO")
-    for _, line in ipairs(session.log) do print("[Boss] " .. line) end
-    if session.omitted > 0 then print("[Boss] Limite do log atingido. Eventos extras: " .. session.omitted) end
-    print("[Boss] FIM DO RELATÓRIO")
-    if not active then summary.Text = "Relatório enviado ao console do Delta." end
+gui.Destroying:Connect(function()
+    finish("Esquiva encerrada.")
 end)
