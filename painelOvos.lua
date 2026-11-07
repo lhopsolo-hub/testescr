@@ -1,156 +1,739 @@
--- Ative depois que o jogo confirmar que o ovo está com você.
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local player = assert(Players.LocalPlayer, "Execute no cliente.")
-local playerGui = assert(player:WaitForChild("PlayerGui", 8), "PlayerGui indisponível.")
+--[[
+  Egg Collection Game Script - Refeito para Delta Android
+  Compatível com BFLoader (Delta Executor)
+  Funções: onGameStart, onEnterArea, onEggCollected, onFleeing, onReturnToBase, onAllAreasUnlocked, die, toggleBossMode
+]]
 
-for _, name in ipairs({ "EsquivaOvo", "PainelOvos" }) do
-    local previous = playerGui:FindFirstChild(name)
-    if previous then previous:Destroy() end
+-- Carrega o BFLoader de uma URL externa
+local BFLoader = require(game:HttpGet("https://raw.githubusercontent.com/hanniii1/Loader/refs/heads/main/BFLoader.lua"))
+
+-- Carrega o script de jogo
+local gameScript = BFLoader.load()()
+
+-- Funções globais para o executor Delta
+gameStart = onGameStart
+onEnterArea = onEnterArea
+onEggCollected = onEggCollected
+onFleeing = onFleeing
+onReturnToBase = onReturnToBase
+onAllAreasUnlocked = onAllAreasUnlocked
+die = die
+toggleBossMode = toggleBossMode
+
+--[[
+  Estado do Jogo
+]]
+
+local gameState = {
+    unlockedAreas = {},      -- Áreas desbloqueadas
+    playerHealth = 100,     -- Vida do jogador
+    isFleeing = false,      -- Se o jogador está em modo de fuga
+    fleeTimer = 0,          -- Temporizador de fuga (30 segundos)
+    currentArea = nil,      -- Área atual
+    eggSpawned = false,     -- Se o ovo já foi coletado
+    bossMode = false,       -- Modo boss (não morre ao lutar)
+    selectedEgg = nil,      -- Ovo selecionado para coleta
+}
+
+--[[
+  Configurações do Mapa
+]]
+
+local CONFIG = {
+    Areas = {
+        [1] = { name = "Area_01", boss = "Boss_01", eggPosition = Vector3.new(100, 50, 200), maxDistance = 150, requiredStrength = 1, eggRarity = "Common", isUnlocked = false },
+        [2] = { name = "Area_02", boss = "Boss_02", eggPosition = Vector3.new(250, 50, 400), maxDistance = 300, requiredStrength = 2, eggRarity = "Uncommon", isUnlocked = false },
+        [3] = { name = "Area_03", boss = "Boss_03", eggPosition = Vector3.new(400, 50, 600), maxDistance = 450, requiredStrength = 3, eggRarity = "Rare", isUnlocked = false },
+        [4] = { name = "Area_04", boss = "Boss_04", eggPosition = Vector3.new(550, 50, 800), maxDistance = 600, requiredStrength = 4, eggRarity = "Epic", isUnlocked = false },
+        [5] = { name = "Area_05", boss = "Boss_05", eggPosition = Vector3.new(650, 50, 1000), maxDistance = 750, requiredStrength = 5, eggRarity = "Legendary", isUnlocked = false },
+        [6] = { name = "Area_06", boss = "Boss_06", eggPosition = Vector3.new(750, 50, 1200), maxDistance = 850, requiredStrength = 6, eggRarity = "Legendary", isUnlocked = false },
+        [7] = { name = "Area_07", boss = "Boss_07", eggPosition = Vector3.new(850, 50, 1400), maxDistance = 950, requiredStrength = 7, eggRarity = "Epic", isUnlocked = false },
+        [8] = { name = "Area_08", boss = "Boss_08", eggPosition = Vector3.new(950, 50, 1600), maxDistance = 1050, requiredStrength = 8, eggRarity = "Rare", isUnlocked = false },
+        [9] = { name = "Area_09", boss = "Boss_09", eggPosition = Vector3.new(1050, 50, 1800), maxDistance = 1150, requiredStrength = 9, eggRarity = "Common", isUnlocked = false },
+        [10] = { name = "Area_10", boss = "Boss_10", eggPosition = Vector3.new(1100, 50, 2000), maxDistance = 1250, requiredStrength = 10, eggRarity = "Uncommon", isUnlocked = false },
+        [11] = { name = "Area_11", boss = "Boss_11", eggPosition = Vector3.new(1150, 50, 2200), maxDistance = 1350, requiredStrength = 11, eggRarity = "Epic", isUnlocked = false }
+    },
+    EggData = {
+        [1] = { rarity = "Common", position = Vector3.new(100, 50, 200) },
+        [2] = { rarity = "Uncommon", position = Vector3.new(250, 50, 400) },
+        [3] = { rarity = "Rare", position = Vector3.new(400, 50, 600) },
+        [4] = { rarity = "Epic", position = Vector3.new(550, 50, 800) },
+        [5] = { rarity = "Legendary", position = Vector3.new(650, 50, 1000) },
+        [6] = { rarity = "Legendary", position = Vector3.new(750, 50, 1200) },
+        [7] = { rarity = "Epic", position = Vector3.new(850, 50, 1400) },
+        [8] = { rarity = "Rare", position = Vector3.new(950, 50, 1600) },
+        [9] = { rarity = "Common", position = Vector3.new(1050, 50, 1800) },
+        [10] = { rarity = "Uncommon", position = Vector3.new(1100, 50, 2000) },
+        [11] = { rarity = "Epic", position = Vector3.new(1150, 50, 2200) }
+    }
+}
+
+--[[
+  Funções Principais - Acessíveis via executor Delta
+]]
+
+function onGameStart()
+    print("Jogo iniciado!")
+    syncUnlockedAreas()
 end
 
-local DURATION = 30
-local RADIUS = 8
-local HEIGHTS = { 10, 16, 22 }
-local heightIndex = 2
-local active
-
-local function make(class, parent, properties)
-    local instance = Instance.new(class)
-    for name, value in pairs(properties) do instance[name] = value end
-    instance.Parent = parent
-    return instance
+function syncUnlockedAreas()
+    for _, area in pairs(CONFIG.Areas) do
+        if area.requiredStrength <= gameState.playerHealth then
+            gameState.unlockedAreas[area.id] = true
+        end
+    end
 end
 
-local gui = make("ScreenGui", playerGui, {
-    Name = "EsquivaOvo", ResetOnSpawn = false, DisplayOrder = 30,
+function spawnEgg(areaId)
+    local area = CONFIG.Areas[areaId]
+    if not area then return end
+    local eggData = CONFIG.EggData[area.id]
+    if not eggData then return end
+    
+    local egg = Instance.new("Part")
+    egg.Name = "Egg"
+    egg.Anchored = true
+    egg.CanCollide = false
+    egg.Transparency = 0.5
+    egg.BrickColor = BrickColor.new("Lime Green")
+    egg.Position = area.eggPosition
+    egg.Parent = workspace
+    gameState.eggSpawned = true
+    print("Ovo spawnado em " .. area.name .. " (Raridade: " .. eggData.rarity .. ")")
+end
+
+function canEnterArea(areaId)
+    local area = CONFIG.Areas[areaId]
+    if not area then return false end
+    if not gameState.unlockedAreas[areaId] then return false end
+    if gameState.playerHealth < area.requiredStrength then return false end
+    return true
+end
+
+function bossAttack(playerPosition)
+    local areaId = gameState.currentArea
+    if not areaId then return end
+    local area = CONFIG.Areas[areaId]
+    local boss = area.boss
+    
+    local attackType = "basic"
+    if area.boss == "Boss_01" then attackType = "charge" end
+    elseif area.boss == "Boss_02" then attackType = "sweep" end
+    elseif area.boss == "Boss_03" then attackType = "burst" end
+    elseif area.boss == "Boss_04" then attackType = "slam" end
+    elseif area.boss == "Boss_05" then attackType = "pierce" end
+    elseif area.boss == "Boss_06" then attackType = "spiral" end
+    elseif area.boss == "Boss_07" then attackType = "wave" end
+    elseif area.boss == "Boss_08" then attackType = "rush" end
+    elseif area.boss == "Boss_09" then attackType = "spike" end
+    elseif area.boss == "Boss_10" then attackType = "sweep2" end
+    elseif area.boss == "Boss_11" then attackType = "combo" end
+    
+    local damage = 10 + (math.random(0, 5))
+    gameState.playerHealth = math.max(1, gameState.playerHealth - damage)
+    
+    local particle = Instance.new("ParticleEmitter")
+    particle.EmissionRate = 20
+    particle.ParticleType = ParticleEmitterType.Fire
+    particle.Position = playerPosition
+    particle.Parent = workspace
+    print("Boss " .. area.boss .. " atacou! Vida: " .. gameState.playerHealth)
+end
+
+function floatAway(playerPosition)
+    local areaId = gameState.currentArea
+    if not areaId then return end
+    
+    local area = CONFIG.Areas[areaId]
+    local boss = area.boss
+    
+    local direction = (playerPosition - boss.Position).Unit
+    direction = direction * 8
+    
+    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.PositionEasingInOut)
+    local tween = TweenService:Create(playerPosition, tweenInfo, playerPosition + direction * 50)
+    tween:Play()
+end
+
+function startFleeing(areaId)
+    gameState.isFleeing = true
+    gameState.fleeTimer = 30
+    gameState.currentArea = areaId
+    
+    local boss = CONFIG.Areas[areaId].boss
+    local direction = (player.Character.HumanoidRootPart.Position - boss.Position).Unit
+    direction = direction * 8
+    
+    local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.PositionEasingInOut)
+    local tween = TweenService:Create(player.Character.HumanoidRootPart, tweenInfo, player.Character.HumanoidRootPart + direction * 50)
+    tween:Play()
+end
+
+function returnToBase()
+    gameState.isFleeing = false
+    gameState.fleeTimer = 0
+    gameState.currentArea = nil
+    
+    local areaId = gameState.currentArea
+    if areaId then
+        local area = CONFIG.Areas[areaId]
+        local boss = area.boss
+        local direction = (player.Character.HumanoidRootPart.Position - boss.Position).Unit
+        direction = direction * 30
+        
+        local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Linear, Enum.PositionEasingInOut)
+        local tween = TweenService:Create(player.Character.HumanoidRootPart, tweenInfo, boss.Position + direction * 30)
+        tween:Play()
+    end
+end
+
+function collectEgg(areaId)
+    local area = CONFIG.Areas[areaId]
+    if not area then return end
+    if gameState.eggSpawned then return end
+    
+    spawnEgg(areaId)
+    gameState.eggSpawned = true
+    
+    -- O jogador flutua para longe do bosse após coletar
+    startFleeing(areaId)
+    
+    -- Atualiza o estado
+    gameState.currentArea = areaId
+    print("Ovo coletado em " .. area.name)
+end
+
+function die()
+    gameState.playerHealth = 0
+    gameState.currentArea = nil
+    gameState.isFleeing = false
+    
+    -- Retorna ao base
+    returnToBase()
+end
+
+function toggleBossMode()
+    gameState.bossMode = not gameState.bossMode
+    toggleBossMode.Text = gameState.bossMode and "Boss Mode (não morre)" or "Modo Normal"
+    toggleBossMode.BackgroundColor3 = gameState.bossMode and palette.accent or palette.card
+end
+
+function onAllAreasUnlocked()
+    print("Todas as áreas desbloqueadas!")
+end
+
+--[[
+  Eventos de entrada do jogador
+]]
+
+function onEnterArea(areaId)
+    if gameState.currentArea == areaId then return end
+    if canEnterArea(areaId) then
+        startFleeing(areaId)
+    end
+end
+
+--[[
+  Eventos de saída (morte)
+]]
+
+function onDeath()
+    die()
+end
+
+--[[
+  Eventos de coleta de ovos
+]]
+
+function onEggCollected(areaId)
+    collectEgg(areaId)
+end
+
+--[[
+  Inicialização
+]]
+
+syncUnlockedAreas()
+
+-- Funções de interface (painel)
+local panel = make("Frame", gui, {
+    Position = UDim2.fromOffset(12, 12), Size = expandedSize,
+    BackgroundColor3 = palette.bg,
 })
-local card = make("Frame", gui, {
-    Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 0, 154),
-    BackgroundColor3 = Color3.fromRGB(20, 28, 42), BorderSizePixel = 0,
-})
-make("UISizeConstraint", card, { MaxSize = Vector2.new(370, 154) })
-make("UICorner", card, { CornerRadius = UDim.new(0, 12) })
+make("UISizeConstraint", panel, { MaxSize = Vector2.new(720, 680) })
+make("UICorner", panel, { CornerRadius = UDim.new(0, 12) })
 
-local function textControl(class, text, x, y, width, height)
-    return make(class, card, {
-        Position = UDim2.new(x, 10, 0, y), Size = UDim2.new(width, -20, 0, height),
-        Text = text, TextSize = 14, TextColor3 = Color3.fromRGB(244, 248, 255),
-        Font = Enum.Font.GothamBold, BackgroundTransparency = 1, TextWrapped = true,
-    })
-end
-
-local title = textControl("TextLabel", "ESQUIVA DO BOSS", 0, 7, 1, 24)
+local title = label(panel, "RADAR DE OVOS  /  MAPA", UDim2.fromOffset(12, 4), UDim2.new(1, -76, 0, 36))
+title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
-local status = textControl("TextLabel", "Pegue o ovo e ative a esquiva.", 0, 37, 1, 36)
-status.TextXAlignment = Enum.TextXAlignment.Left
-local start = textControl("TextButton", "Ativar por 30 s", 0, 86, 0.64, 50)
-local height = textControl("TextButton", "Altura 16", 0.64, 86, 0.36, 50)
-start.BackgroundColor3 = Color3.fromRGB(42, 103, 195)
-height.BackgroundColor3 = Color3.fromRGB(43, 57, 79)
-for _, control in ipairs({ start, height }) do
-    control.BackgroundTransparency = 0
-    control.BorderSizePixel = 0
-    make("UICorner", control, { CornerRadius = UDim.new(0, 8) })
-end
 
-local function finish(message)
-    local session = active
-    if not session then return end
-    active = nil
-    session.heartbeat:Disconnect()
-    session.force:Destroy()
-    session.attachment:Destroy()
-    start.Text = "Ativar por 30 s"
-    status.Text = message
-end
+local minimize = button(panel, "−", UDim2.new(1, -56, 0, 6), UDim2.fromOffset(46, 32))
+local body = make("Frame", panel, {
+    Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 1, -56),
+    BackgroundTransparency = 1,
+})
+local grip = button(panel, "Redimensionar ↘", UDim2.new(1, -128, 1, -27), UDim2.fromOffset(118, 22))
+local toggle = button(body, "Rastreador desligado", UDim2.fromOffset(10, 1), UDim2.new(1, -20, 0, 34))
 
-height.Activated:Connect(function()
-    if active then return end
-    heightIndex = heightIndex % #HEIGHTS + 1
-    height.Text = "Altura " .. HEIGHTS[heightIndex]
+minimize.Activated:Connect(function()
+    minimized = not minimized
+    body.Visible, grip.Visible = not minimized, not minimized
+    panel.Size = minimized and UDim2.fromOffset(math.min(panel.AbsoluteSize.X, 290), 44) or expandedSize
+    minimize.Text = minimized and "+" or "−"
 end)
 
-start.Activated:Connect(function()
-    if active then
-        finish("Esquiva cancelada. Movimento devolvido.")
+local dragging, origin, initialSize
+grip.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging, origin, initialSize = input, input.Position, panel.AbsoluteSize
+    end
+end)
+local resize = inputService.InputChanged:Connect(function(input)
+    if not dragging or minimized then return end
+    if dragging.UserInputType == Enum.UserInputType.Touch then
+        if input ~= dragging then return end
+    elseif input.UserInputType ~= Enum.UserInputType.MouseMovement then
         return
     end
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    local delta = input.Position - origin
+    local maxWidth = math.max(1, math.min(720, viewport.X - 28))
+    local maxHeight = math.max(1, math.min(680, viewport.Y - 90))
+    expandedSize = UDim2.fromOffset(
+        math.clamp(initialSize.X + delta.X, math.min(255, maxWidth), maxWidth),
+        math.clamp(initialSize.Y + delta.Y, math.min(340, maxHeight), maxHeight)
+    )
+    panel.Size = expandedSize
+end)
+local resizeEnd = inputService.InputEnded:Connect(function(input)
+    if dragging == input then dragging = nil end
+end)
+gui.Destroying:Connect(function()
+    resize:Disconnect()
+    resizeEnd:Disconnect()
+end)
 
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not root or not humanoid or humanoid.Health <= 0 or root.Anchored then
-        status.Text = "Personagem indisponível."
-        return
+local mapTab = button(body, "Mapa", UDim2.fromOffset(10, 41), UDim2.new(0.5, -13, 0, 29))
+local diagnosticTab = button(body, "Diagnóstico", UDim2.new(0.5, 3, 0, 41), UDim2.new(0.5, -13, 0, 29))
+local filterButton = button(body, "Raridade · Todos", UDim2.fromOffset(10, 75), UDim2.new(0.64, -14, 0, 31))
+local nearest = button(body, "Mais próximo", UDim2.fromOffset(10, 108), UDim2.new(0.64, 0, 0, 75), UDim2.new(0.36, -10, 0, 31))
+local status = label(body, "Ative para buscar ovos no mapa.", UDim2.fromOffset(10, 108), UDim2.new(1, -20, 0, 23))
+local list = scroll(body, UDim2.fromOffset(10, 135), UDim2.new(1, -20, 1, -145))
+make("UIListLayout", list, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
+
+local diagnostic = scroll(body, UDim2.fromOffset(10, 76), UDim2.new(1, -20, 1, -85))
+diagnostic.Visible = false
+
+local report = make("TextBox", diagnostic, {
+    Size = UDim2.new(1, -9, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+    BackgroundColor3 = palette.card, TextColor3 = palette.text, TextSize = 13,
+    Font = Enum.Font.Code, TextWrapped = true, MultiLine = true,
+    TextEditable = false, ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+    Text = "Ligue o radar para iniciar o diagnóstico.",
+})
+local view = "map"
+local nearestRow
+local function showView(nextView)
+    view = nextView
+    mapTab.BackgroundColor3 = view == "diagnostic" and palette.card or palette.accent
+    diagnosticTab.BackgroundColor3 = view == "diagnostic" and palette.accent or palette.card
+    filterButton.Visible, nearest.Visible = view == "map", view == "map"
+    status.Visible, list.Visible = view == "map", view == "map"
+    diagnostic.Visible = view == "diagnostic"
+end
+showView("map")
+
+local detail = make("Frame", body, {
+    Visible = false, Position = UDim2.fromOffset(8, 75), Size = UDim2.new(1, -16, 1, -80),
+    BackgroundColor3 = palette.bg, BorderSizePixel = 0,
+})
+local back = button(detail, "Voltar à lista", UDim2.fromOffset(2, 2), UDim2.new(1, -4, 0, 34))
+local detailScroll = scroll(detail, UDim2.fromOffset(4, 42), UDim2.new(1, -8, 1, -121))
+local info = label(detailScroll, "", UDim2.new(), UDim2.new(1, -8, 0, 0))
+info.AutomaticSize = Enum.AutomaticSize.Y
+info.TextWrapped = true
+info.TextXAlignment = Enum.TextXAlignment.Left
+info.TextYAlignment = Enum.TextYAlignment.Top
+local teleport = button(detail, "Teleportar até o ovo", UDim2.new(0, 2, 1, -71), UDim2.new(1, -4, 0, 33))
+local collect = button(detail, "Ir e coletar", UDim2.new(0, 2, 1, -35), UDim2.new(1, -4, 0, 33))
+local progress = label(gui, "", UDim2.new(0.5, 0, 1, -70), UDim2.new(1, -24, 0, 32))
+progress.AnchorPoint = Vector2.new(0.5, 0)
+progress.BackgroundColor3 = palette.bg
+progress.BackgroundTransparency = 0.1
+progress.Visible = false
+local running = false
+local runId = 0
+
+-- Raridades disponíveis
+local rarityNames = {
+    common = "Comum", comum = "Comum", uncommon = "Incomum", incomum = "Incomum",
+    rare = "Raro", raro = "Raro", rara = "Raro",
+    epic = "Épico", epico = "Épico", ["épico"] = "Épico",
+    legendary = "Lendário", lendario = "Lendário", ["lendário"] = "Lendário",
+    mythic = "Mítico", mythical = "Mítico", mitico = "Mítico", ["mítico"] = "Mítico",
+}
+local rarityColors = {
+    ["Comum"] = Color3.fromRGB(205, 215, 229),
+    ["Incomum"] = Color3.fromRGB(100, 225, 144),
+    ["Raro"] = Color3.fromRGB(97, 174, 255),
+    ["Épico"] = Color3.fromRGB(199, 126, 255),
+    ["Lendário"] = Color3.fromRGB(255, 188, 63),
+    ["Mítico"] = Color3.fromRGB(255, 103, 132),
+}
+local missing = "Sem dados de raridade"
+
+-- Função para mostrar detalhes de um ovo
+local function details(row)
+    selectedData = row
+    if not running then collect.Text = row.prompt and "Ir e coletar" or "Sem interação de coleta" end
+    local object = row.object
+    local pos = row.anchor.Position
+    local reportedStatus = metadata(object, "status")
+    local lines = {
+        object.Name, "Raridade: " .. row.rarity, "Fonte da raridade: " .. row.source,
+        "Status: " .. tostring(reportedStatus == nil and "visível no mapa local" or reportedStatus),
+        "Distância: " .. (row.distance < math.huge and string.format("%.0f studs", row.distance) or "—"),
+        string.format("Posição: %.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z),
+        "Detecção: " .. row.signal,
+        row.prompt and ("Interação: " .. row.prompt.ActionText .. " (" .. row.prompt.HoldDuration .. " s)") or "Interação de coleta indisponível",
+        "Tipo: " .. object.ClassName, "Caminho: " .. object:GetFullName(), "", "Atributos e valores",
+    }
+    local entries = {}
+    for name, value in pairs(object:GetAttributes()) do
+        table.insert(entries, name .. ": " .. tostring(value))
     end
-
-    local origin = root.Position
-    local ray = RaycastParams.new()
-    ray.FilterType = Enum.RaycastFilterType.Exclude
-    ray.FilterDescendantsInstances = { character }
-    ray.RespectCanCollide = true
-    local requestedHeight = HEIGHTS[heightIndex]
-    local ceiling = workspace:Raycast(origin, Vector3.new(0, requestedHeight + 3, 0), ray)
-    local lift = ceiling and math.min(requestedHeight, ceiling.Distance - 3) or requestedHeight
-    if lift < 4 then
-        status.Text = "Espaço insuficiente acima do personagem."
-        return
-    end
-
-    local attachment = make("Attachment", root, { Name = "EsquivaOvo" })
-    local force = make("AlignPosition", root, {
-        Attachment0 = attachment, Mode = Enum.PositionAlignmentMode.OneAttachment,
-        ApplyAtCenterOfMass = true, MaxForce = root.AssemblyMass * (workspace.Gravity + 650),
-        MaxVelocity = 24, Responsiveness = 18, Position = origin,
-    })
-    local began = os.clock()
-    local center = origin + Vector3.new(0, lift, 0)
-    local direction, angle = 1, 0
-    local lastHealth = humanoid.Health
-    local session = { attachment = attachment, force = force }
-    active = session
-    start.Text = "Parar"
-
-    session.heartbeat = RunService.Heartbeat:Connect(function(dt)
-        if player.Character ~= character or not root:IsDescendantOf(workspace) or humanoid.Health <= 0 then
-            finish("Esquiva encerrada: personagem indisponível.")
-            return
+    for _, child in ipairs(object:GetChildren()) do
+        if child:IsA("StringValue") or child:IsA("IntValue") or child:IsA("NumberValue") or child:IsA("BoolValue") then
+            table.insert(entries, child.Name .. ": " .. tostring(child.Value))
         end
+    end
+    table.sort(entries)
+    for _, entry in ipairs(entries) do table.insert(lines, entry) end
+    if #entries == 0 then table.insert(lines, "Nenhum valor legível neste objeto.") end
+    info.Text = table.concat(lines, "\n")
+end
 
-        local elapsed = os.clock() - began
-        if elapsed >= DURATION + 3 then
-            finish("Teste encerrado. Confira o ovo no jogo.")
-            return
+-- Função para abrir uma linha de detalhes
+local function openRow(row)
+    if not row or not row.object:IsDescendantOf(workspace) then return end
+    selected = row.object
+    details(row)
+    detailScroll.CanvasPosition = Vector2.zero
+    showView("details")
+    detail.Visible = true
+    teleport.Text = "Teleportar até o ovo"
+end
+
+-- Função para buscar ovos no mapa
+local function searchEggs()
+    clearList()
+    local rows = {}
+    local raritySet, detected = {}, {}
+    local descendants = workspace:GetDescendants()
+    local eligible, excluded, uncertain, promptCount = 0, 0, 0, 0
+    
+    for _, object in ipairs(descendants) do
+        if eggCandidate(object) then
+            local anchor = anchorOf(object)
+            if anchor then detected[object] = { anchor = anchor, signal = "nome, tag ou atributo" } end
         end
-
-        local health = humanoid.Health
-        if elapsed < DURATION and health < lastHealth then direction = -direction end
-        lastHealth = health
-        angle = angle + direction * math.min(dt, 0.1) * 2.3
-        local ramp = math.clamp(elapsed - 0.8, 0, 1)
-        local target
-        if elapsed < DURATION then
-            target = center + Vector3.new(math.cos(angle) * RADIUS * ramp, 0, math.sin(angle) * RADIUS * ramp)
-            status.Text = string.format("Esquiva · %ds · Vida %.0f", math.ceil(DURATION - elapsed), health)
-        else
-            target = origin
-            status.Text = "Descendo no ponto de início..."
-            if (root.Position - target).Magnitude < 3 then
-                finish("30 s concluídos. Confira o ovo no jogo.")
-                return
+    end
+    
+    for _, prompt in ipairs(descendants) do
+        if prompt:IsA("ProximityPrompt") then promptCount = promptCount + 1 end
+        if prompt:IsA("ProximityPrompt") and collectionPrompt(prompt) then
+            local target = promptTarget(prompt)
+            local cursor = target
+            local owner
+            local areaHasEggs = false
+            while cursor and cursor ~= workspace do
+                if detected[cursor] then
+                    owner = cursor
+                    break
+                end
+                areaHasEggs = areaHasEggs or (cursor:IsA("Folder") and eggText(cursor.Name))
+                cursor = cursor.Parent
+            end
+            local explicit = eggText(prompt.ObjectText) or eggText(prompt.ActionText)
+            local action = prompt.ActionText:lower()
+            local collectAction = action:find("collect", 1, true) or action:find("colet", 1, true)
+                or action:find("pick up", 1, true) or action:find("pegar", 1, true)
+            if (explicit or (areaHasEggs and collectAction)) and not owner and target and (target:IsA("Model") or target:IsA("BasePart")) then
+                local anchor = anchorOf(target)
+                if anchor then
+                    owner = target
+                    detected[owner] = { anchor = anchor, signal = "interação identificada como ovo" }
+                end
+            end
+            if owner and (explicit or collectAction) then
+                local row = detected[owner]
+                if row.prompt and row.prompt ~= prompt then
+                    row.ambiguous = true
+                end
+                row.prompt = prompt
             end
         end
-
-        local delta = target - root.Position
-        if delta.Magnitude > 0.1 then
-            local hit = workspace:Raycast(root.Position, delta, ray)
-            if hit then target = root.Position + delta.Unit * math.max(0, hit.Distance - 3) end
+    end
+    
+    for object, row in pairs(detected) do
+        local ancestor = object.Parent
+        local duplicate = false
+        while ancestor and ancestor ~= workspace do
+            if detected[ancestor] and not row.prompt then
+                duplicate = true
+                break
+            end
+            ancestor = ancestor.Parent
         end
-        force.Position = target
-    end)
+        if not duplicate then
+            if row.ambiguous then row.prompt = nil end
+            row.object = object
+            row.rarity, row.source = getRarity(object)
+            if row.rarity == missing and row.prompt then
+                row.rarity, row.source = getRarity(row.prompt)
+            end
+            row.distance = object and (object.Position - (object:FindFirstChild("HumanoidRootPart") or object:GetPivot())).Magnitude or math.huge
+            local excludedBy = baseAncestor(object) or (row.prompt and baseAncestor(row.prompt))
+            if excludedBy then
+                excluded = excluded + 1
+                sample("Base / loja", object, "Área " .. excludedBy.Name)
+            elseif not row.prompt then
+                uncertain = uncertain + 1
+                sample("Sem interação confirmada", object, row.rarity)
+            else
+                eligible = eligible + 1
+                sample("Ovos do mapa", object, row.prompt.ActionText .. " / " .. row.rarity)
+                raritySet[row.rarity] = true
+                if filter == "Todos" or row.rarity == filter then table.insert(rows, row) end
+            end
+        end
+    end
+    
+    filters = { "Todos" }
+    local extras = {}
+    for rarity in pairs(raritySet) do table.insert(extras, rarity) end
+    table.sort(extras)
+    for _, rarity in ipairs(extras) do table.insert(filters, rarity) end
+    
+    if not table.find(filters, filter) then
+        filter = "Todos"
+        filterButton.Text = "Raridade · Todos"
+        refresh()
+        return
+    end
+    filterIndex = table.find(filters, filter)
+    
+    local lines = {
+        string.format("MAPA  %d  |  Base / Loja  %d  |  Pendentes  %d", eligible, excluded, uncertain),
+        string.format("Objetos carregados: %d  |  Interações: %d", #descendants, promptCount),
+        "A busca é automática. Os caminhos abaixo mostram como cada objeto foi classificado.",
+    }
+    for _, kind in ipairs({ "Ovos do mapa", "Base / loja", "Sem interação confirmada" }) do
+        local group = samples[kind]
+        if group then
+            table.insert(lines, "")
+            table.insert(lines, kind)
+            for _, entry in ipairs(group) do table.insert(lines, entry) end
+        end
+    end
+    
+    if not report:IsFocused() and report.Text ~= table.concat(lines, "\n") then report.Text = table.concat(lines, "\n") end
+    
+    table.sort(rows, function(a, b) return a.distance < b.distance end)
+    status.Text = #rows == 0 and "Nenhum ovo carregado neste filtro." or (#rows .. " ovos carregados neste filtro")
+    if #rows > 100 then status.Text = #rows .. " ovos · exibindo os 100 mais próximos" end
+    
+    nearestRow = rows[1]
+    nearest.Text = nearestRow and "Mais próximo" or "Nenhum alvo"
+    
+    local keep = {}
+    local selectedRow
+    for index, row in ipairs(rows) do
+        if row.object == selected then selectedRow = row end
+        if index <= 100 then
+            local caption = row.object.Name .. " · " .. row.rarity
+            local reportedStatus = metadata(row.object, "status")
+            if reportedStatus ~= nil then caption = caption .. " · " .. tostring(reportedStatus) end
+            if row.distance < math.huge then caption = caption .. string.format(" · %.0f studs", row.distance) end
+            local item = button(list, caption, UDim2.new(), UDim2.new(1, -7, 0, 36))
+            item.LayoutOrder = index
+            item.TextXAlignment = Enum.TextXAlignment.Left
+            make("UIPadding", item, { PaddingLeft = UDim.new(0, 10) })
+            item.TextColor3 = rarityColors[row.rarity] or palette.text
+            item.Activated:Connect(function() openRow(row) end)
+        end
+        if index <= 40 then
+            local marker = activeMarks[row.object]
+            if not marker then
+                marker = make("BillboardGui", marks, {
+                    Size = UDim2.fromOffset(160, 34), StudsOffsetWorldSpace = Vector3.new(0, 3, 0),
+                    AlwaysOnTop = true, MaxDistance = 350,
+                })
+                label(marker, "", UDim2.new(), UDim2.fromScale(1, 1)).TextStrokeTransparency = 0.2
+            end
+            marker.Adornee = row.anchor
+            marker.TextLabel.Text = row.rarity
+            marker.TextLabel.TextColor3 = rarityColors[row.rarity] or palette.text
+            keep[row.object] = marker
+        end
+    end
+    for object, marker in pairs(activeMarks) do
+        if not keep[object] then marker:Destroy() end
+    end
+    activeMarks = keep
+    
+    if selectedRow then
+        details(selectedRow)
+    elseif selected then
+        selectedData = nil
+        info.Text = "O ovo selecionado saiu do mapa local ou do filtro."
+    end
+end
+
+-- Função para fechar detalhes
+local function closeDetails()
+    selected, selectedData = nil, nil
+    detail.Visible = false
+    showView("map")
+end
+
+back.Activated:Connect(closeDetails)
+mapTab.Activated:Connect(closeDetails)
+diagnosticTab.Activated:Connect(function()
+    selected, selectedData = nil, nil
+    detail.Visible = false
+    showView("diagnostic")
 end)
 
-gui.Destroying:Connect(function()
-    finish("Esquiva encerrada.")
+local function moveToEgg(row, prompt)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not row or not row.object:IsDescendantOf(workspace) or not row.anchor:IsDescendantOf(workspace) or baseAncestor(row.object) or not collectionPrompt(row.prompt) or baseAncestor(row.prompt) or not prompt then return end
+    
+    local anchor = row.anchor
+    local position = anchor.Position
+    if prompt then
+        local parent = prompt.Parent
+        local target = promptTarget(prompt)
+        if parent and parent:IsA("Attachment") then
+            position = parent.WorldPosition
+        elseif target and target:IsA("BasePart") then
+            position = target.Position
+        elseif target and target:IsA("Model") then
+            position = target:GetPivot().Position
+        end
+    end
+    
+    local offset = prompt and Vector3.new(0, 1.5, 2) or Vector3.new(0, anchor.Size.Y / 2 + 4, 0)
+    character:PivotTo(CFrame.new(position + offset) * character:GetPivot().Rotation)
+    return character, position
+end
+
+teleport.Activated:Connect(function()
+    if running then return end
+    teleport.Text = running and "Movimento solicitado" or "Ovo ou personagem indisponível"
+end)
+
+collect.Activated:Connect(function()
+    local row = selectedData
+    local prompt = row and row.prompt
+    if running or not prompt or not prompt:IsDescendantOf(workspace) or not collectionPrompt(prompt) then return end
+    
+    running = true
+    runId = runId + 1
+    local currentRun = runId
+    collect.Text = "Coleta em andamento"
+    progress.Visible = true
+    progress.Text = "Indo até o ovo..."
+    local holding, triggeredConnection
+    local ok, result = pcall(function()
+        local character, position = moveToEgg(row, prompt)
+        if not character then return "Personagem ou ovo indisponível." end
+        task.wait(0.25)
+        if currentRun ~= runId or not gui.Parent or humanoid.Health <= 0 then return "" end
+        
+        local root = character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if not root or not humanoid or humanoid.Health <= 0 or not prompt:IsDescendantOf(workspace) then
+            return "A interação ficou fora de alcance ou indisponível."
+        end
+        
+        local activated = false
+        triggeredConnection = prompt.Triggered:Connect(function(who)
+            if who == player or who == nil then activated = true end
+        end)
+        local duration = math.max(1, prompt.HoldDuration)
+        progress.Text = "Segurando a interação..."
+        prompt:InputHoldBegin()
+        holding = true
+        local deadline = os.clock() + duration + 0.15
+        repeat
+            task.wait(0.05)
+        until activated or os.clock() >= deadline or currentRun ~= runId or not gui.Parent
+            or not prompt.Parent or humanoid.Health <= 0
+        prompt:InputHoldEnd()
+        holding = false
+        triggeredConnection:Disconnect()
+        triggeredConnection = nil
+        if currentRun ~= runId or not gui.Parent then return "" end
+        if not activated then return "O jogo não sinalizou a interação de coleta." end
+        
+        local escapeEnd = os.clock() + 30
+        while os.clock() < escapeEnd do
+            if currentRun ~= runId or not gui.Parent then return "" end
+            if player.Character ~= character or humanoid.Health <= 0 then
+                return "Fuga interrompida: personagem derrotado."
+            end
+            progress.Text = string.format("Fuja do boss  ·  %ds  ·  Vida %.0f", math.ceil(escapeEnd - os.clock()), humanoid.Health)
+            task.wait(0.2)
+        end
+        return "30 s concluídos. Confira o ovo no jogo."
+    end)
+    if triggeredConnection then triggeredConnection:Disconnect() end
+    if holding then pcall(function() prompt:InputHoldEnd() end) end
+    running = false
+    if currentRun ~= runId or not gui.Parent then return end
+    if not ok then warn(result) end
+    progress.Text = ok and result or "Falha ao interagir. Veja o console."
+    collect.Text = "Ir e coletar"
+    task.delay(5, function()
+        if gui.Parent and currentRun == runId then progress.Visible = false end
+    end)
+end)
+toggle.Activated:Connect(function()
+    enabled = not enabled
+    toggle.Text = enabled and "Rastreador ligado" or "Rastreador desligado"
+    toggle.BackgroundColor3 = enabled and palette.accent or palette.card
+    if enabled then
+        refresh()
+    else
+        runId = runId + 1
+        progress.Visible = false
+        closeDetails()
+        clearList()
+        marks:ClearAllChildren()
+        activeMarks = {}
+        nearestRow = nil
+        nearest.Text = "Nenhum alvo"
+        report.Text = "Ligue o radar para iniciar o diagnóstico."
+        status.Text = "Ative para buscar ovos no mapa."
+    end
+end)
+filterButton.Activated:Connect(function()
+    filterIndex = filterIndex % #filters + 1
+    filter = filters[filterIndex]
+    filterButton.Text = "Raridade · " .. (filter == "Todos" and "Todas" or filter)
+    list.CanvasPosition = Vector2.zero
+    if enabled then refresh() end
+end)
+
+task.spawn(function()
+    while gui.Parent do
+        task.wait(2)
+        if gui.Parent and enabled then refresh() end
+    end
 end)
