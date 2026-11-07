@@ -55,7 +55,7 @@ local function scroll(parent, position, size)
     })
 end
 
-local title = label(panel, "RASTREADOR DE OVOS", UDim2.fromOffset(12, 4), UDim2.new(1, -76, 0, 36))
+local title = label(panel, "RADAR DE OVOS  /  MAPA", UDim2.fromOffset(12, 4), UDim2.new(1, -76, 0, 36))
 title.Font = Enum.Font.GothamBold
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = button(panel, "−", UDim2.new(1, -56, 0, 6), UDim2.fromOffset(46, 32))
@@ -93,7 +93,7 @@ local resize = inputService.InputChanged:Connect(function(input)
     local maxHeight = math.max(1, math.min(680, viewport.Y - 90))
     expandedSize = UDim2.fromOffset(
         math.clamp(initialSize.X + delta.X, math.min(255, maxWidth), maxWidth),
-        math.clamp(initialSize.Y + delta.Y, math.min(245, maxHeight), maxHeight)
+        math.clamp(initialSize.Y + delta.Y, math.min(340, maxHeight), maxHeight)
     )
     panel.Size = expandedSize
 end)
@@ -104,13 +104,38 @@ gui.Destroying:Connect(function()
     resize:Disconnect()
     resizeEnd:Disconnect()
 end)
-local filterButton = button(body, "Filtro · Todos", UDim2.fromOffset(10, 40), UDim2.new(1, -20, 0, 34))
-local status = label(body, "Ative para buscar ovos no mapa.", UDim2.fromOffset(10, 75), UDim2.new(1, -20, 0, 25))
-local list = scroll(body, UDim2.fromOffset(10, 103), UDim2.new(1, -20, 1, -122))
+local mapTab = button(body, "Mapa", UDim2.fromOffset(10, 41), UDim2.new(0.5, -13, 0, 29))
+local diagnosticTab = button(body, "Diagnóstico", UDim2.new(0.5, 3, 0, 41), UDim2.new(0.5, -13, 0, 29))
+local filterButton = button(body, "Raridade · Todas", UDim2.fromOffset(10, 75), UDim2.new(0.64, -14, 0, 31))
+local nearest = button(body, "Mais próximo", UDim2.new(0.64, 0, 0, 75), UDim2.new(0.36, -10, 0, 31))
+local status = label(body, "Ative para buscar ovos no mapa.", UDim2.fromOffset(10, 108), UDim2.new(1, -20, 0, 23))
+local list = scroll(body, UDim2.fromOffset(10, 135), UDim2.new(1, -20, 1, -145))
 make("UIListLayout", list, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
 
+local diagnostic = scroll(body, UDim2.fromOffset(10, 76), UDim2.new(1, -20, 1, -85))
+diagnostic.Visible = false
+local report = make("TextBox", diagnostic, {
+    Size = UDim2.new(1, -9, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+    BackgroundColor3 = palette.card, TextColor3 = palette.text, TextSize = 13,
+    Font = Enum.Font.Code, TextWrapped = true, MultiLine = true,
+    TextEditable = false, ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+    Text = "Ligue o radar para iniciar o diagnóstico.",
+})
+local view = "map"
+local nearestRow
+local function showView(nextView)
+    view = nextView
+    mapTab.BackgroundColor3 = view == "diagnostic" and palette.card or palette.accent
+    diagnosticTab.BackgroundColor3 = view == "diagnostic" and palette.accent or palette.card
+    filterButton.Visible, nearest.Visible = view == "map", view == "map"
+    status.Visible, list.Visible = view == "map", view == "map"
+    diagnostic.Visible = view == "diagnostic"
+end
+showView("map")
+
 local detail = make("Frame", body, {
-    Visible = false, Position = UDim2.fromOffset(8, 39), Size = UDim2.new(1, -16, 1, -57),
+    Visible = false, Position = UDim2.fromOffset(8, 75), Size = UDim2.new(1, -16, 1, -80),
     BackgroundColor3 = palette.bg, BorderSizePixel = 0,
 })
 local back = button(detail, "Voltar à lista", UDim2.fromOffset(2, 2), UDim2.new(1, -4, 0, 34))
@@ -184,6 +209,22 @@ local function collectionPrompt(prompt)
     return prompt.Enabled and prompt.HoldDuration >= 0.75 and prompt.HoldDuration <= 3
 end
 
+local excludedNames = {
+    base = true, bases = true, starterbase = true, initialbase = true, playerbase = true,
+    starterarea = true, spawn = true, spawnarea = true, lobby = true, shop = true,
+    eggshop = true, hatchery = true, loja = true, baseinicial = true,
+}
+local function baseAncestor(object)
+    local cursor = object
+    while cursor and cursor ~= workspace do
+        if excludedNames[cursor.Name:lower():gsub("[%s_%-]", "")]
+            or cursor:GetAttribute("IsBase") == true or cursor:GetAttribute("IsShop") == true then
+            return cursor
+        end
+        cursor = cursor.Parent
+    end
+end
+
 local function anchorOf(object)
     if object:IsA("BasePart") then return object end
     return object.PrimaryPart or object:FindFirstChildWhichIsA("BasePart", true)
@@ -248,12 +289,30 @@ local function details(row)
     info.Text = table.concat(lines, "\n")
 end
 
+local function openRow(row)
+    if not row or not row.object:IsDescendantOf(workspace) then return end
+    selected = row.object
+    details(row)
+    detailScroll.CanvasPosition = Vector2.zero
+    showView("details")
+    detail.Visible = true
+    teleport.Text = "Teleportar até o ovo"
+end
+nearest.Activated:Connect(function() openRow(nearestRow) end)
+
 local function refresh()
     clearList()
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     local rows = {}
     local raritySet, detected = {}, {}
     local descendants = workspace:GetDescendants()
+    local eligible, excluded, uncertain, promptCount = 0, 0, 0, 0
+    local samples = {}
+    local function sample(kind, object, description)
+        if not samples[kind] then samples[kind] = {} end
+        local group = samples[kind]
+        if #group < 6 then table.insert(group, object:GetFullName() .. "  |  " .. description) end
+    end
     for _, object in ipairs(descendants) do
         if eggCandidate(object) then
             local anchor = anchorOf(object)
@@ -261,6 +320,7 @@ local function refresh()
         end
     end
     for _, prompt in ipairs(descendants) do
+        if prompt:IsA("ProximityPrompt") then promptCount = promptCount + 1 end
         if prompt:IsA("ProximityPrompt") and collectionPrompt(prompt) then
             local target = promptTarget(prompt)
             local cursor = target
@@ -312,8 +372,19 @@ local function refresh()
                 row.rarity, row.source = getRarity(row.prompt)
             end
             row.distance = root and (root.Position - row.anchor.Position).Magnitude or math.huge
-            raritySet[row.rarity] = true
-            if filter == "Todos" or row.rarity == filter then table.insert(rows, row) end
+            local excludedBy = baseAncestor(object) or (row.prompt and baseAncestor(row.prompt))
+            if excludedBy then
+                excluded = excluded + 1
+                sample("Base / loja", object, "Área " .. excludedBy.Name)
+            elseif not row.prompt then
+                uncertain = uncertain + 1
+                sample("Sem interação confirmada", object, row.rarity)
+            else
+                eligible = eligible + 1
+                sample("Ovos do mapa", object, row.prompt.ActionText .. " / " .. row.rarity)
+                raritySet[row.rarity] = true
+                if filter == "Todos" or row.rarity == filter then table.insert(rows, row) end
+            end
         end
     end
     filters = { "Todos" }
@@ -323,14 +394,31 @@ local function refresh()
     for _, rarity in ipairs(extras) do table.insert(filters, rarity) end
     if not table.find(filters, filter) then
         filter = "Todos"
-        filterButton.Text = "Filtro · Todos"
+        filterButton.Text = "Raridade · Todas"
         refresh()
         return
     end
     filterIndex = table.find(filters, filter)
+    local lines = {
+        string.format("MAPA  %d  |  BASE / LOJA  %d  |  PENDENTES  %d", eligible, excluded, uncertain),
+        string.format("Objetos carregados: %d  |  Interações: %d", #descendants, promptCount),
+        "A busca é automática. Os caminhos abaixo mostram como cada objeto foi classificado.",
+    }
+    for _, kind in ipairs({ "Ovos do mapa", "Base / loja", "Sem interação confirmada" }) do
+        local group = samples[kind]
+        if group then
+            table.insert(lines, "")
+            table.insert(lines, kind)
+            for _, entry in ipairs(group) do table.insert(lines, entry) end
+        end
+    end
+    local text = table.concat(lines, "\n")
+    if not report:IsFocused() and report.Text ~= text then report.Text = text end
     table.sort(rows, function(a, b) return a.distance < b.distance end)
     status.Text = #rows == 0 and "Nenhum ovo carregado neste filtro." or (#rows .. " ovos carregados neste filtro")
     if #rows > 100 then status.Text = #rows .. " ovos · exibindo os 100 mais próximos" end
+    nearestRow = rows[1]
+    nearest.Text = nearestRow and "Mais próximo" or "Nenhum alvo"
     local keep = {}
     local selectedRow
     for index, row in ipairs(rows) do
@@ -342,14 +430,10 @@ local function refresh()
             if row.distance < math.huge then caption = caption .. string.format(" · %.0f studs", row.distance) end
             local item = button(list, caption, UDim2.new(), UDim2.new(1, -7, 0, 36))
             item.LayoutOrder = index
-            item.Activated:Connect(function()
-                selected = row.object
-                details(row)
-                detailScroll.CanvasPosition = Vector2.zero
-                list.Visible, status.Visible, filterButton.Visible = false, false, false
-                detail.Visible = true
-                teleport.Text = "Teleportar até o ovo"
-            end)
+            item.TextXAlignment = Enum.TextXAlignment.Left
+            make("UIPadding", item, { PaddingLeft = UDim.new(0, 10) })
+            item.TextColor3 = rarityColors[row.rarity] or palette.text
+            item.Activated:Connect(function() openRow(row) end)
         end
         if index <= 40 then
             local marker = activeMarks[row.object]
@@ -381,14 +465,23 @@ end
 local function closeDetails()
     selected, selectedData = nil, nil
     detail.Visible = false
-    list.Visible, status.Visible, filterButton.Visible = true, true, true
+    showView("map")
 end
 
 back.Activated:Connect(closeDetails)
+mapTab.Activated:Connect(closeDetails)
+diagnosticTab.Activated:Connect(function()
+    selected, selectedData = nil, nil
+    detail.Visible = false
+    showView("diagnostic")
+end)
 local function moveToEgg(row, prompt)
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root or not row or not row.object:IsDescendantOf(workspace) then return end
+    if not root or not row or not row.object:IsDescendantOf(workspace)
+        or not row.anchor:IsDescendantOf(workspace) or baseAncestor(row.object)
+        or not row.prompt or not row.prompt:IsDescendantOf(workspace)
+        or not collectionPrompt(row.prompt) or baseAncestor(row.prompt) then return end
     local anchor = row.anchor
     local position = anchor.Position
     if prompt then
@@ -493,13 +586,16 @@ toggle.Activated:Connect(function()
         clearList()
         marks:ClearAllChildren()
         activeMarks = {}
+        nearestRow = nil
+        nearest.Text = "Nenhum alvo"
+        report.Text = "Ligue o radar para iniciar o diagnóstico."
         status.Text = "Ative para buscar ovos no mapa."
     end
 end)
 filterButton.Activated:Connect(function()
     filterIndex = filterIndex % #filters + 1
     filter = filters[filterIndex]
-    filterButton.Text = "Filtro · " .. filter
+    filterButton.Text = "Raridade · " .. (filter == "Todos" and "Todas" or filter)
     list.CanvasPosition = Vector2.zero
     if enabled then refresh() end
 end)
