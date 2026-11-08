@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V22", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V23", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V22] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V23] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -268,7 +268,7 @@ local function inCage(point, bounds, margin)
         and point.Z >= bounds.minZ + margin and point.Z <= bounds.maxZ - margin
 end
 
-local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar)
+local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar, heading)
     local origin = root.Position
     local currentFloor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
     if not currentFloor or currentFloor.Normal.Y < 0.65 then return end
@@ -284,7 +284,8 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
             local distanceFromBoss = bossPosition and horizontalDistance(candidate, bossPosition)
             if inCage(candidate, bounds, 4)
                 and (not minimumBossDistance or distanceFromBoss >= minimumBossDistance)
-                and not threatened(candidate, warnings, margin) then
+                and not threatened(candidate, warnings, margin)
+                and (not heading or not threatened(origin:Lerp(candidate, .5), warnings, margin)) then
                 local floor = workspace:Raycast(candidate + Vector3.new(0, 2, 0), Vector3.new(0, -20, 0), ray)
                 if floor and floor.Normal.Y >= 0.65
                     and math.abs(floor.Position.Y - currentFloor.Position.Y) <= 2 then
@@ -292,9 +293,10 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
                     local travel = destination - origin
                     if not workspace:Raycast(origin, travel, ray)
                         and not workspace:Raycast(origin + Vector3.new(0, 1.5, 0), travel, ray) then
-                        if not distanceFromBoss then return travel end
-                        if not bestDistance or distanceFromBoss > bestDistance then
-                            best, bestDistance = travel, distanceFromBoss
+                        if not distanceFromBoss and not heading then return travel end
+                        local score = (distanceFromBoss or 0) + (heading and 12 * direction:Dot(heading) or 0)
+                        if not bestDistance or score > bestDistance then
+                            best, bestDistance = travel, score
                         end
                     end
                 end
@@ -303,6 +305,8 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
         if best then return best end
     end
 end
+
+local DESERT_BOUNDS = { minX = -120, maxX = 120, minZ = -800, maxZ = -400 }
 
 local function hasEgg(value)
     return value == true or (tonumber(value) or 0) > 0
@@ -354,6 +358,9 @@ local function startFight()
                 end
                 if now - checkedAt >= 0.25 then
                     bounds, checkedAt = cageBounds(root.Position), now
+                    if not bounds and desert and inCage(root.Position, DESERT_BOUNDS, 0.1) then
+                        bounds = DESERT_BOUNDS
+                    end
                 end
                 local insideArena = inCage(root.Position, bounds, 0.1)
                 if not insideArena and session.walking then
@@ -435,20 +442,26 @@ local function startFight()
                 local closeBoss = nearestBoss <= (desert and 34 or 23)
                 local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
                 local goal = session.runGoal
+                local goalDistance = goal and horizontalDistance(root.Position, goal) or math.huge
+                local switchToDodge = desert and danger and session.patrolling
                 if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
                     or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
-                    or horizontalDistance(root.Position, goal) <= 1.5) then
-                    humanoid:MoveTo(root.Position)
+                    or switchToDodge or goalDistance <= (desert and 5 or 1.5)) then
+                    if not desert then humanoid:MoveTo(root.Position) end
                     session.walking, session.runGoal = false, nil
                 end
-                if session.walking then message = "Correndo para fora do ataque" end
+                if session.walking then message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque" end
 
-                if insideArena and not session.walking and (danger or closeBoss) and now - lastScan >= 0.08 then
+                if insideArena and not session.walking and (danger or closeBoss or desert) and now - lastScan >= (desert and 0.04 or 0.08) then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
                     local delta
                     if desert and danger then
                         delta = safeStep(root, areas, ray, nil, bounds, 1.75, false)
+                    elseif desert then
+                        local heading = session.heading or Vector3.new(1, 0, 0)
+                        delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading)
+                            or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading)
                     else
                         delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, not danger)
                     end
@@ -460,11 +473,14 @@ local function startFight()
                         session.runGoal = root.Position + delta
                         session.runUntil = now + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
                         session.walking = true
+                        session.patrolling = desert and not danger
+                        if desert then session.heading = Vector3.new(delta.X, 0, delta.Z).Unit end
                         humanoid:MoveTo(session.runGoal)
-                        session.moves = session.moves + 1
+                        if not session.patrolling then session.moves = session.moves + 1 end
                         session.lastDistance = distance
-                        message = "Correndo para fora do ataque"
+                        message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque"
                     else
+                        if desert then humanoid:MoveTo(root.Position) end
                         message = "Sem saída interna livre a pé"
                     end
                 end
@@ -1336,7 +1352,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 end
                 if not deposited then
                     depositsSkipped = depositsSkipped + 1
-                    warn("[Colocação V22] " .. tostring(problem) .. " · coleta continua")
+                    warn("[Colocação V23] " .. tostring(problem) .. " · coleta continua")
                 end
             end
             if auto and autoHatch and pen then
@@ -1356,7 +1372,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V22] " .. detail) end
+                if not ok then warn("[Auto Coletar V23] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1417,7 +1433,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V22", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V23", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
