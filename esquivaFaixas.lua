@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V32", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V33", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V32] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V33] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -1162,16 +1162,19 @@ end
 local function worldPoint()
     local camera = workspace.CurrentCamera
     if not camera then return end
-    for _, x in ipairs({ 0.50, 0.43, 0.57 }) do
-        local point = Vector2.new(camera.ViewportSize.X * x, camera.ViewportSize.Y * 0.68)
-        local blocked = false
-        for _, item in ipairs(guiParent:GetGuiObjectsAtPosition(point.X, point.Y)) do
-            if item:IsA("GuiButton") or item.Active or item:IsDescendantOf(gui) then
-                blocked = true
-                break
+    local size = camera.ViewportSize
+    for _, y in ipairs({ .68, .55, .41, .77, .30 }) do
+        for _, x in ipairs({ .50, .43, .57, .67, .33, .76, .24, .84, .16 }) do
+            local point = Vector2.new(size.X * x, size.Y * y)
+            local blocked = false
+            for _, item in ipairs(guiParent:GetGuiObjectsAtPosition(point.X, point.Y)) do
+                if visibleControl(item) and (item:IsA("GuiButton") or item.Active or item:IsDescendantOf(gui)) then
+                    blocked = true
+                    break
+                end
             end
+            if not blocked then return point end
         end
-        if not blocked then return point end
     end
 end
 
@@ -1237,8 +1240,12 @@ local function performPlacement(character, root, pen, name, previousTools, previ
     end
     local function tapToPlace()
         local point = eligible() and worldPoint()
-        if not point or type(firesignal) ~= "function" then
-            pending = "Não foi possível enviar um toque ao cercado"
+        if not point then
+            pending = "Nenhuma área livre da tela para tocar"
+            return false
+        end
+        if type(firesignal) ~= "function" then
+            pending = "Toque indisponível no executor"
             return false
         end
         pending = "O jogo não confirmou a colocação pelo toque"
@@ -1263,8 +1270,9 @@ local function performPlacement(character, root, pen, name, previousTools, previ
             end)
             return eligible() and horizontalDistance(root.Position, point) <= tolerance
         end
-        local alreadyThere = horizontalDistance(root.Position, target) <= 1
-        local arrived = walkTo(target, 4, 1)
+        local arrivalTolerance = 1.5
+        local alreadyThere = horizontalDistance(root.Position, target) <= arrivalTolerance
+        local arrived = walkTo(target, 4, arrivalTolerance)
         if not arrived and marked and eligible() then
             local path = game:GetService("PathfindingService"):CreatePath({ AgentCanJump = false })
             local computed = pcall(function() path:ComputeAsync(root.Position, target) end)
@@ -1274,7 +1282,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                     local remaining = deadline - os.clock()
                     if remaining <= 0 or not walkTo(waypoint.Position, math.min(remaining, 2), 1.5) then break end
                 end
-                arrived = walkTo(target, 1, 1)
+                arrived = walkTo(target, 1, arrivalTolerance)
             end
             path:Destroy()
         end
@@ -1319,7 +1327,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V32] Alvo a %.1f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V33] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1428,7 +1436,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V32] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V33] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1455,14 +1463,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V32] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V33] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V32] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V33] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1511,7 +1519,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V32] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V33] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1522,7 +1530,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V32] " .. problem) end
+                if problem then warn("[Inventário V33] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1568,7 +1576,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V32] " .. detail) end
+                if not ok then warn("[Auto Coletar V33] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1629,7 +1637,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V32", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V33", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1743,7 +1751,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V32] " .. tostring(reason or count))
+        warn("[Inventário V33] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1771,7 +1779,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V32] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V33] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1800,7 +1808,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V32] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V33] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
