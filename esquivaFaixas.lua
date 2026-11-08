@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V24", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V25", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V24] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V25] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -559,7 +559,7 @@ round(collectionStatus, 6)
 
 local auto = false
 local autoDeposit, autoHatch = true, true
-local depositing = false
+local depositing, hatching = false, false
 local selectedZone = 1
 local autoButton = make("TextButton", eggsPanel, {
     Position = UDim2.new(0, 7, 1, -81), Size = UDim2.new(1, -14, 0, 29),
@@ -771,7 +771,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
 end
 
 local function collectEgg(egg, input, clicks, fromAuto)
-    if depositing or collecting or (auto and not fromAuto) then return end
+    if hatching or depositing or collecting or (auto and not fromAuto) then return end
     if carryingEgg() then collectionStatus.Text = "Você já está carregando um ovo."; return end
     collecting = true
     local function allowed() return gui.Parent ~= nil and (not fromAuto or auto) end
@@ -1299,30 +1299,61 @@ local function depositInventory(character, root, pen, input, clicks)
 end
 
 local function hatchReady(root, pen, input, clicks)
-    while gui.Parent and auto and autoHatch and ownPen() == pen and root.Parent do
-        local canHatch = false
-        for _, egg in ipairs(pen:GetChildren()) do
-            local prompt = egg:FindFirstChild("HatchPrompt", true)
-            local point = prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled and promptPosition(prompt)
-            if point and (point - root.Position).Magnitude <= math.max(8, prompt.MaxActivationDistance) then
-                canHatch = true
-                break
+    local hatched = 0
+    local function allowed()
+        return gui.Parent and (hatching or (auto and autoHatch))
+            and root.Parent == player.Character and ownPen() == pen and not carryingEgg()
+    end
+    while allowed() do
+        local candidate, nearest
+        for _, prompt in ipairs(pen:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and prompt.Name == "HatchPrompt" and prompt.Enabled then
+                local point = promptPosition(prompt)
+                local distance = point and (point - root.Position).Magnitude
+                if distance and distance <= prompt.MaxActivationDistance and (not nearest or distance < nearest) then
+                    candidate, nearest = prompt, distance
+                end
             end
         end
-        if not canHatch then return true end
-        local hatch = guiParent:FindFirstChild("HatchButton")
-        local face = hatch and hatch:FindFirstChild("Face", true)
-        local before = tonumber(player:GetAttribute("PenEggs"))
-        if not face or not face:IsA("GuiButton") or not visibleControl(face) or not before then return true end
-        collectionStatus.Text = "Chocando ovo pronto..."
-        if not signalFace(face, input, clicks) or not waitFor(root, 3, function()
-            return not auto or (tonumber(player:GetAttribute("PenEggs")) or before) < before
-        end) then
-            return false, "Eclosão não confirmada. Confira o botão Chocar."
+        local function hatchFace()
+            local hatch = guiParent:FindFirstChild("HatchButton")
+            local face = hatch and hatch:FindFirstChild("Face", true)
+            return face and face:IsA("GuiButton") and visibleControl(face) and face
         end
-        task.wait(0.55)
+        if not candidate and not hatchFace() then return true, nil, hatched end
+        local before = tonumber(player:GetAttribute("PenEggs"))
+        local original = penTimes()
+        local function confirmed()
+            local current = tonumber(player:GetAttribute("PenEggs"))
+            if before and current and current < before then return true end
+            local times = original and penTimes()
+            if times then
+                for timestamp, count in pairs(original) do
+                    if (times[timestamp] or 0) < count then return true end
+                end
+            end
+        end
+        local function waitConfirmation(seconds)
+            waitFor(root, seconds, function() return confirmed() or not allowed() end)
+            return confirmed()
+        end
+        collectionStatus.Text = "Chocando ovo pronto..."
+        local success
+        if candidate and pcall(function() candidate:InputHoldBegin() end) then
+            local deadline = os.clock() + math.max(.05, candidate.HoldDuration)
+            while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
+            pcall(function() candidate:InputHoldEnd() end)
+            success = waitConfirmation(1.5)
+        end
+        if not success and allowed() then
+            local face = hatchFace()
+            if face and signalFace(face, input, clicks) then success = waitConfirmation(2) end
+        end
+        if not success then return false, "Eclosão não confirmada.", hatched end
+        hatched = hatched + 1
+        task.wait(.35)
     end
-    return false, "Ciclo interrompido."
+    return false, "Eclosão interrompida.", hatched
 end
 
 local function bestEgg(root, zoneNumber)
@@ -1345,7 +1376,7 @@ end
 local looping = false
 autoButton.Activated:Connect(function(input, clicks)
     if auto then setAuto(false); collectionStatus.Text = "Desligando ciclo..."; return end
-    if depositing or looping or collecting or carryingEgg() then return end
+    if hatching or depositing or looping or collecting or carryingEgg() then return end
     local zoneNumber = selectedZone
     setAuto(true)
     looping = true
@@ -1389,7 +1420,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 end
                 if not deposited then
                     depositsSkipped = depositsSkipped + 1
-                    warn("[Colocação V24] " .. tostring(problem) .. " · coleta continua")
+                    warn("[Colocação V25] " .. tostring(problem) .. " · coleta continua")
                 end
             end
             if auto and autoHatch and pen then
@@ -1399,7 +1430,7 @@ autoButton.Activated:Connect(function(input, clicks)
             if auto and autoDeposit and pen then
                 local placed, reason = depositInventory(character, root, pen, input, clicks)
                 if placed > 0 then deposited = true end
-                if reason then warn("[Inventário V24] " .. reason) end
+                if reason then warn("[Inventário V25] " .. reason) end
             end
             if not autoDeposit then return true, "Depósito desligado · próxima rodada" end
             return true, deposited and "Ovo colocado · próxima rodada" or "Depósito não confirmado · seguindo"
@@ -1414,7 +1445,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V24] " .. detail) end
+                if not ok then warn("[Auto Coletar V25] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1475,7 +1506,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V24", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V25", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1555,7 +1586,7 @@ penToggle.Activated:Connect(function()
 end)
 local depositNow = arcadeButton(penPage, "Colocar ovos do inventário", UDim2.fromOffset(12, 151), UDim2.new(1, -24, 0, 36))
 depositNow.Activated:Connect(function(input, clicks)
-    if depositing then return end
+    if depositing or hatching then return end
     if looping or collecting then
         depositNow.Text = "Depósito gerenciado pela coleta"
         return
@@ -1573,12 +1604,40 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V24] " .. tostring(reason or count))
+        warn("[Inventário V25] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
     else
         depositNow.Text = string.format("%d colocado(s) · verificar novamente", count)
+    end
+end)
+local hatchNow = arcadeButton(hatchPage, "Chocar ovos prontos", UDim2.fromOffset(12, 151), UDim2.new(1, -24, 0, 36))
+hatchNow.Activated:Connect(function(input, clicks)
+    if hatching then return end
+    if looping or collecting or depositing then
+        hatchNow.Text = "Aguarde a ação atual terminar"
+        return
+    end
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local pen = ownPen()
+    if not root or not pen or carryingEgg() then
+        hatchNow.Text = "Volte ao seu cercado para chocar"
+        return
+    end
+    hatching = true
+    hatchNow.Text = "Chocando..."
+    local ran, ok, reason, count = pcall(hatchReady, root, pen, input, clicks)
+    hatching = false
+    if not gui.Parent then return end
+    if not ran or not ok then
+        warn("[Eclosão V25] " .. tostring(ran and reason or ok))
+        hatchNow.Text = "Eclosão não confirmada · veja console"
+    elseif count == 0 then
+        hatchNow.Text = "Nenhum ovo pronto ao alcance"
+    else
+        hatchNow.Text = string.format("%d chocado(s) · verificar novamente", count)
     end
 end)
 hatchToggle.Activated:Connect(function()
