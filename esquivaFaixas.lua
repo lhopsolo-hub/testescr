@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V30", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V31", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V30] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V31] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -306,7 +306,10 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
     end
 end
 
-local DESERT_BOUNDS = { minX = -120, maxX = 120, minZ = -800, maxZ = -400 }
+local mappedBounds = {
+    [2] = { minX = -120, maxX = 120, minZ = -800, maxZ = -400 },
+    [3] = { minX = -120, maxX = 120, minZ = -1200, maxZ = -800 },
+}
 
 local function hasEgg(value)
     return value == true or (tonumber(value) or 0) > 0
@@ -323,7 +326,9 @@ local function startFight()
         return
     end
 
-    local desert = tonumber(carrying) == 2
+    local zoneNumber = tonumber(carrying)
+    local desert, ice = zoneNumber == 2, zoneNumber == 3
+    local fallbackBounds = mappedBounds[zoneNumber]
     local session = { moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
@@ -358,8 +363,8 @@ local function startFight()
                 end
                 if now - checkedAt >= 0.25 then
                     bounds, checkedAt = cageBounds(root.Position), now
-                    if not bounds and desert and inCage(root.Position, DESERT_BOUNDS, 0.1) then
-                        bounds = DESERT_BOUNDS
+                    if not bounds and fallbackBounds and inCage(root.Position, fallbackBounds, 0.1) then
+                        bounds = fallbackBounds
                     end
                 end
                 local insideArena = inCage(root.Position, bounds, 0.1)
@@ -368,7 +373,7 @@ local function startFight()
                     session.walking = false
                 end
                 local folder = workspace:FindFirstChild("BossFX")
-                if now - (session.effectsAt or -math.huge) >= (desert and 0.04 or 0.12) then
+                if now - (session.effectsAt or -math.huge) >= 0.06 then
                     session.effectsAt = now
                     session.fxParts = {}
                     session.bosses = {}
@@ -402,12 +407,21 @@ local function startFight()
                 end
                 for _, part in ipairs(session.fxParts) do
                     if part.Parent then
-                        local desertFX = desert and folder and part:IsDescendantOf(folder)
+                        local bossFX = folder and part:IsDescendantOf(folder)
+                        local size = part.Size
+                        local color = part.Color
+                        local smallGround = bossFX and part.Transparency < .98
+                            and color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35
+                            and math.abs(part.Position.Y-root.Position.Y) <= 16
+                            and horizontalDistance(part.Position, root.Position) <= 150
+                            and (part:IsA("WedgePart") or (size.Y <= .6 and size.X >= 2.8 and size.Z >= 2.8))
+                        local desertFX = desert and bossFX
                         local shape = desertFX and part.Transparency >= 0.60
                             and part.Transparency < 0.98 and desertShape(part)
-                        if shape or isWarning(part, root.Position) then
+                        if shape or smallGround or isWarning(part, root.Position) then
                             local warning = updateWarning(session.warnings[part], part, now)
                             warning.shape = shape
+                            if smallGround then warning.static = true end
                             if shape then
                                 warning.static = true
                                 warning.movingUntil = 0
@@ -439,31 +453,30 @@ local function startFight()
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
-                local closeBoss = nearestBoss <= (desert and 34 or 23)
                 local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
                 local goal = session.runGoal
                 local goalDistance = goal and horizontalDistance(root.Position, goal) or math.huge
-                local switchToDodge = desert and danger and session.patrolling
+                local switchToDodge = danger and session.patrolling
                 if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
                     or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
-                    or switchToDodge or goalDistance <= (desert and 5 or 1.5)) then
-                    if not desert then humanoid:MoveTo(root.Position) end
+                    or switchToDodge or goalDistance <= 5) then
+                    if not insideArena then humanoid:MoveTo(root.Position) end
                     session.walking, session.runGoal = false, nil
                 end
                 if session.walking then message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque" end
 
-                if insideArena and not session.walking and (danger or closeBoss or desert) and now - lastScan >= (desert and 0.04 or 0.08) then
+                if insideArena and not session.walking and now - lastScan >= 0.04 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
                     local delta
-                    if desert and danger then
+                    if (desert or ice) and danger then
                         delta = safeStep(root, areas, ray, nil, bounds, 1.75, false)
-                    elseif desert then
+                    elseif not danger then
                         local heading = session.heading or Vector3.new(1, 0, 0)
                         delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading)
                             or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading)
                     else
-                        delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, not danger)
+                        delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, false)
                     end
                     if not delta and danger then
                         delta = safeStep(root, areas, ray, nil, bounds, 2.5, false)
@@ -473,18 +486,18 @@ local function startFight()
                         session.runGoal = root.Position + delta
                         session.runUntil = now + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
                         session.walking = true
-                        session.patrolling = desert and not danger
-                        if desert then session.heading = Vector3.new(delta.X, 0, delta.Z).Unit end
+                        session.patrolling = not danger
+                        session.heading = Vector3.new(delta.X, 0, delta.Z).Unit
                         humanoid:MoveTo(session.runGoal)
                         if not session.patrolling then session.moves = session.moves + 1 end
                         session.lastDistance = distance
                         message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque"
                     else
-                        if desert then humanoid:MoveTo(root.Position) end
+                        humanoid:MoveTo(root.Position)
                         message = "Sem saída interna livre a pé"
                     end
                 end
-                if not desert and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
+                if not desert and not ice and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
@@ -1259,7 +1272,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V30] Alvo a %.1f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V31] Alvo a %.1f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1368,7 +1381,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V30] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V31] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1395,14 +1408,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V30] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V31] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V30] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V31] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1451,7 +1464,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V30] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V31] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1462,7 +1475,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V30] " .. problem) end
+                if problem then warn("[Inventário V31] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1508,7 +1521,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V30] " .. detail) end
+                if not ok then warn("[Auto Coletar V31] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1569,7 +1582,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V30", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V31", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1683,7 +1696,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V30] " .. tostring(reason or count))
+        warn("[Inventário V31] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1711,7 +1724,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V30] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V31] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1740,7 +1753,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V30] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V31] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
