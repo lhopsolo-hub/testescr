@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V36", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V37", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V36] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V37] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -298,7 +298,7 @@ local function outsideCircleTarget(root, circles, warnings, bounds, ray)
     for _, circle in ipairs(circles) do
         local center, radius = circle.center, circle.radius
         if horizontalDistance(root.Position, center) <= radius + 5 then
-            for _, extra in ipairs({ 6, 10 }) do
+            for _, extra in ipairs({ 6, 10, 15, 20 }) do
                 for _, direction in ipairs(directions) do
                     local candidate = Vector3.new(center.X, root.Position.Y, center.Z) + direction * (radius + extra)
                     local outside = inCage(candidate, bounds, 5)
@@ -503,13 +503,17 @@ local function startFight()
                         local pink = cosmic and bossFX and part.Transparency < .98
                             and color.R > .45 and color.B > .35 and color.G < math.min(color.R, color.B) * .8
                         local span = math.max(size.X, size.Y, size.Z)
-                        local disk = cosmic and bossFX and part.Transparency < .98
-                            and (pink or color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35)
-                            and math.abs(part.Position.Y-root.Position.Y) <= 12
-                            and ((size.X <= 1 and math.abs(size.Y-size.Z) <= 2 and size.Y >= 16
-                                and math.abs(part.CFrame.RightVector.Y) >= .98)
-                                or (size.Y <= 1 and math.abs(size.X-size.Z) <= 2 and size.X >= 16
-                                    and math.abs(part.CFrame.UpVector.Y) >= .98))
+                        local disk = cosmic and (bossFX or part.Transparency >= .2) and part.Transparency < .995
+                            and math.abs(part.Position.Y-root.Position.Y) <= 16
+                            and (pink or (color.R >= .4 and color.R > color.G * 1.2 and color.R > color.B * 1.2)
+                                or (color.B >= .4 and color.R >= .25 and color.G < color.B * .8))
+                            and span >= 12
+                            and ((size.X <= 2 and math.abs(size.Y-size.Z) <= span * .2
+                                and math.abs(part.CFrame.RightVector.Y) >= .9)
+                                or (size.Y <= 2 and math.abs(size.X-size.Z) <= span * .2
+                                    and math.abs(part.CFrame.UpVector.Y) >= .9)
+                                or (size.Z <= 2 and math.abs(size.X-size.Y) <= span * .2
+                                    and math.abs(part.CFrame.LookVector.Y) >= .9))
                         if disk then table.insert(circles, { center = part.Position, radius = span / 2 }) end
                         local beam = bossFX and cosmic and math.abs(span - 70) <= 2
                             and size.Y <= .65 and math.min(size.X, size.Z) <= 1
@@ -553,8 +557,16 @@ local function startFight()
                     end
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
-                local circleEscaped = false
-                if cosmic and insideArena and now - (session.lastCircleTeleport or -math.huge) >= .45 then
+                local circleEscaped, circleStatus
+                local circleThreat = false
+                for _, circle in ipairs(circles) do
+                    if horizontalDistance(root.Position, circle.center) <= circle.radius + 5 then
+                        circleThreat = true
+                        break
+                    end
+                end
+                if circleThreat and not insideArena then circleStatus = "Círculo detectado · aguardando perímetro" end
+                if circleThreat and insideArena and now - (session.lastCircleTeleport or -math.huge) >= .45 then
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
                     local target = outsideCircleTarget(root, circles, areas, bounds, ray)
                     if target then
@@ -568,6 +580,9 @@ local function startFight()
                         session.lastDistance = distance
                         session.urgent = nil
                         circleEscaped = true
+                        session.circleCheck = { at = now + .18, from = root.Position, distance = distance }
+                    else
+                        circleStatus = "Círculo detectado · sem destino livre"
                     end
                 end
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
@@ -638,7 +653,19 @@ local function startFight()
                     lastJump = now
                 end
                 if gravityCenter and session.walking then message = "Buraco Negro · fuga radial" end
-                if circleEscaped then message = "Círculo · teleporte interno confirmado" end
+                if session.circleCheck and now >= session.circleCheck.at then
+                    if horizontalDistance(root.Position, session.circleCheck.from) > math.max(8, session.circleCheck.distance * .65)
+                        and circleThreat then
+                        circleStatus = "Círculo · personagem voltou à área"
+                    end
+                    session.circleCheck = nil
+                end
+                if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
+                if circleStatus then
+                    message = circleStatus
+                    if circleStatus ~= session.circleStatus then print("[Círculo V37] " .. circleStatus) end
+                end
+                session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
                     hp, waves, session.hits, message, session.lastDistance)
                 task.wait(0.04)
@@ -1465,7 +1492,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V36] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V37] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1574,7 +1601,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V36] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V37] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1601,14 +1628,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V36] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V37] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V36] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V37] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1657,7 +1684,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V36] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V37] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1668,7 +1695,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V36] " .. problem) end
+                if problem then warn("[Inventário V37] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1714,7 +1741,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V36] " .. detail) end
+                if not ok then warn("[Auto Coletar V37] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1775,7 +1802,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V36", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V37", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1889,7 +1916,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V36] " .. tostring(reason or count))
+        warn("[Inventário V37] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1917,7 +1944,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V36] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V37] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1946,7 +1973,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V36] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V37] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
