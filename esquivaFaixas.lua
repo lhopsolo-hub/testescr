@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V13", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V14", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V13] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V14] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -934,11 +934,12 @@ local function newEggSlot(previous, name)
     local matched, changes = {}, {}
     for index, row in ipairs(hotbarSnapshot()) do
         local before = previous[index]
-        if row.button and visibleControl(row.button) and row.fingerprint ~= ""
-            and (not before or before.fingerprint ~= row.fingerprint) then
-            table.insert(changes, row.button)
+        if row.button and visibleControl(row.button) and row.fingerprint ~= "" then
             if name and name ~= "" and table.find(row.labels, name) then
                 table.insert(matched, row.button)
+            end
+            if not before or before.fingerprint ~= row.fingerprint then
+                table.insert(changes, row.button)
             end
         end
     end
@@ -946,9 +947,9 @@ local function newEggSlot(previous, name)
     if #changes == 1 then return changes[1] end
 end
 
-local function tapWorld()
+local function worldPoint()
     local camera = workspace.CurrentCamera
-    if not camera or type(firesignal) ~= "function" then return false end
+    if not camera then return end
     for _, x in ipairs({ 0.50, 0.43, 0.57 }) do
         local point = Vector2.new(camera.ViewportSize.X * x, camera.ViewportSize.Y * 0.68)
         local blocked = false
@@ -958,11 +959,8 @@ local function tapWorld()
                 break
             end
         end
-        if not blocked then
-            return pcall(firesignal, inputService.TouchTapInWorld, point, false)
-        end
+        if not blocked then return point end
     end
-    return false
 end
 
 local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
@@ -977,44 +975,71 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
         end
     end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local pending = "Interior do cercado não confirmado"
+    local function eligible()
+        return gui.Parent and auto and root.Parent and player.Character == character
+            and ownPen() == pen and not carryingEgg()
+    end
+    local function placed()
+        return (tonumber(player:GetAttribute("PenEggs")) or before) > before
+    end
+    local function confirm(seconds)
+        waitFor(root, seconds, function() return placed() or not eligible() end)
+        return placed()
+    end
     if humanoid and nearest and distance <= 30 then
         collectionStatus.Text = "Entrando no seu cercado..."
         local target = root.Position + nearest
         humanoid:MoveTo(target)
-        local reached = waitFor(root, 4, function()
-            return not auto or (root.Position - target).Magnitude <= 2
+        waitFor(root, 4, function()
+            return not eligible() or horizontalDistance(root.Position, target) <= 2.5
         end)
         if root.Parent then humanoid:MoveTo(root.Position) end
-        if not auto or not root.Parent then return false, "Ciclo interrompido." end
-        if reached and ownPen() == pen then
-            local function placed()
-                return (tonumber(player:GetAttribute("PenEggs")) or before) > before
-            end
+        if eligible() and horizontalDistance(root.Position, target) <= 2.5 then
             local tool = name and name ~= "" and findEggTool(character, name, previousTools)
             if tool then
                 if tool.Parent ~= character then humanoid:EquipTool(tool) end
                 task.wait(0.2)
-                if auto and gui.Parent and ownPen() == pen and tool.Parent == character then
-                    collectionStatus.Text = "Colocando ovo no cercado..."
+                if eligible() and tool.Parent == character then
+                    collectionStatus.Text = "Ativando o ovo equipado..."
                     tool:Activate()
-                    if waitFor(root, 2, placed) then return true end
+                    if confirm(2) then return true end
                 end
-            else
-                local slot = newEggSlot(previousSlots, name)
-                if slot and auto and ownPen() == pen then
-                    collectionStatus.Text = "Selecionando o ovo novo na barra..."
+            end
+
+            if eligible() then
+                pending = "Ovo novo não identificado na barra"
+                collectionStatus.Text = "Procurando o ovo na barra..."
+                local slot = waitFor(root, 3, function()
+                    return eligible() and newEggSlot(previousSlots, name)
+                end)
+                if slot and eligible() then
+                    pending = "A barra não aceitou a seleção"
+                    collectionStatus.Text = "Selecionando o ovo na barra..."
                     if signalFace(slot, input, clicks) then
-                        if waitFor(root, 0.45, placed) then return true end
-                        if auto and gui.Parent and ownPen() == pen and tapWorld()
-                            and waitFor(root, 3, placed) then return true end
+                        if confirm(0.7) then return true end
+                        pending = "O jogo não confirmou a colocação pelo toque"
+                        local point = eligible() and worldPoint()
+                        if point and type(firesignal) == "function" then
+                            collectionStatus.Text = "Colocando ovo no cercado..."
+                            pcall(function() firesignal(inputService.TouchTapInWorld, point, false) end)
+                            if confirm(2) then return true end
+                            if eligible() then
+                                pcall(function() firesignal(inputService.TouchTap, { point }, false) end)
+                                if confirm(2) then return true end
+                            end
+                        else
+                            pending = "Não foi possível enviar um toque ao cercado"
+                        end
                     end
                 end
             end
         end
     end
 
-    if not auto or not gui.Parent then return false, "Ciclo interrompido." end
-    collectionStatus.Text = "Coloque o ovo no seu cercado. O ciclo retoma após confirmar."
+    if not eligible() then return false, "Ciclo interrompido." end
+    collectionStatus.Text = pending .. ". Coloque manualmente para retomar."
+    warn("[Colocação V14] " .. pending)
     while gui.Parent and auto and root.Parent and ownPen() == pen do
         if (tonumber(player:GetAttribute("PenEggs")) or before) > before then return true end
         task.wait(0.2)
@@ -1110,6 +1135,6 @@ autoButton.Activated:Connect(function(input, clicks)
             setAuto(false)
             collectionStatus.Text = ok and reason or "Erro no ciclo. Veja o console."
         end
-        if not ok then warn("[Auto Coletar V13] " .. tostring(reason)) end
+        if not ok then warn("[Auto Coletar V14] " .. tostring(reason)) end
     end)
 end)
