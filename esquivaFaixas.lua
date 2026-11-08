@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(45, 94, 165), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V8", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V9", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V8] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V9] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -462,68 +462,6 @@ local function visible(object)
     return node == guiParent
 end
 
-local function clickAt(x, y)
-    local ok = pcall(function()
-        local input = game:GetService("VirtualInputManager")
-        input:SendMouseButtonEvent(x, y, 0, true, game, 0)
-        input:SendMouseButtonEvent(x, y, 0, false, game, 0)
-    end)
-    return ok
-end
-
-local function clickControl(object)
-    if not object or not visible(object) then return false end
-    local point = object.AbsolutePosition + object.AbsoluteSize / 2
-    for _, hit in ipairs(guiParent:GetGuiObjectsAtPosition(point.X, point.Y)) do
-        if hit == object or hit:IsDescendantOf(object) then
-            return clickAt(math.floor(point.X), math.floor(point.Y))
-        end
-        if hit:IsA("GuiButton") or hit:IsDescendantOf(gui) then return false end
-    end
-    return false
-end
-
-local function normalized(value)
-    return value:lower():gsub("ç", "c"):gsub("ã", "a"):gsub("^%s+", ""):gsub("%s+$", "")
-end
-
-local function namedControl(scope, name, card)
-    if not scope then return end
-    local found
-    for _, item in ipairs(scope:GetDescendants()) do
-        if (item:IsA("TextLabel") or item:IsA("TextButton")) and visible(item)
-            and normalized(item.Text) == name then
-            local button = item:IsA("GuiButton") and item or item:FindFirstAncestorWhichIsA("GuiButton")
-            local node = button or item.Parent
-            for _ = 1, 3 do
-                if button or not node or node == scope then break end
-                local face = node:FindFirstChild("Face")
-                if face and face:IsA("GuiButton") and visible(face) then button = face end
-                node = node.Parent
-            end
-            if button and button:IsDescendantOf(scope) then
-                local valid = not card
-                local ancestor = button.Parent
-                while card and ancestor and ancestor ~= scope and not ancestor:IsA("ScrollingFrame") do
-                    for _, label in ipairs(ancestor:GetDescendants()) do
-                        if label:IsA("TextLabel") and visible(label) and normalized(label.Text) == card then
-                            valid = true
-                            break
-                        end
-                    end
-                    if valid then break end
-                    ancestor = ancestor.Parent
-                end
-                if valid then
-                    if found and found ~= button then return end
-                    found = button
-                end
-            end
-        end
-    end
-    return found
-end
-
 local function inPrado(point)
     -- Envelope conservador dos pontos observados no Prado e na chegada do lançamento.
     return math.abs(point.X) < 120 and point.Z < -75 and point.Z > -300
@@ -541,23 +479,11 @@ end
 
 local function launchToPrado(root, allowed)
     if inPrado(root.Position) then return true end
-    local hud = guiParent:FindFirstChild("HUD")
-    local function step(text, scopeName, card)
-        local button
-        if not waitFor(3, function()
-            if not allowed() then return true end
-            local scope = hud and hud:FindFirstChild(scopeName, true)
-            button = namedControl(scope, text, card)
-            return button ~= nil
-        end) or not allowed() then return false end
-        return clickControl(button)
-    end
-    collectionStatus.Text = "Lançando para o Prado..."
-    if not step("lancar", "TopNav") then return false end
-    if not step("arremessar", "Actions") then return false end
-    if not step("ir!", "Panel", "prado") then return false end
-    return waitFor(8, function() return not allowed() or (root.Parent and inPrado(root.Position)) end)
-        and allowed() and root.Parent and inPrado(root.Position)
+    collectionStatus.Text = "Faça Lançar → Arremessar → IR! no Prado."
+    local arrived = waitFor(75, function()
+        return not allowed() or not root.Parent or inPrado(root.Position)
+    end)
+    return arrived and allowed() and root.Parent and inPrado(root.Position)
 end
 
 local function ownPlot()
@@ -569,51 +495,16 @@ local function ownPlot()
     end
 end
 
-local function worldTap()
-    local camera = workspace.CurrentCamera
-    if not camera then return false end
-    for _, x in ipairs({ 0.50, 0.43, 0.56 }) do
-        local px, py = math.floor(camera.ViewportSize.X * x), math.floor(camera.ViewportSize.Y * 0.68)
-        local free = true
-        for _, hit in ipairs(guiParent:GetGuiObjectsAtPosition(px, py)) do
-            if hit:IsA("GuiButton") or hit.Active or hit:IsDescendantOf(gui) then free = false; break end
-        end
-        if free then return clickAt(px, py) end
-    end
-    return false
-end
-
-local function equipEgg(character, humanoid, label)
-    local function matches(tool)
-        return tool:IsA("Tool") and label and label ~= ""
-            and (normalized(tool.Name) == normalized(label)
-                or normalized(tostring(tool:GetAttribute("EggName") or "")) == normalized(label))
-    end
-    for _, tool in ipairs(character:GetChildren()) do
-        if matches(tool) then return true end
-    end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    for _, tool in ipairs(backpack and backpack:GetChildren() or {}) do
-        if matches(tool) then humanoid:EquipTool(tool); return true end
-    end
-    local inventory = guiParent:FindFirstChild("Inventory")
-    local hotbar = inventory and inventory:FindFirstChild("Hotbar")
-    return label and label ~= "" and clickControl(namedControl(hotbar, normalized(label)))
-end
-
 local function carryingEgg()
     local value = player:GetAttribute("Carrying")
     return value == 1 or value == true
 end
 
-local function placeEgg(character, root, label, before, allowed)
+local function placeEgg(character, root, before, allowed)
     local plot = ownPlot()
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not plot or not humanoid or not root.Parent or inPrado(root.Position) then
         return false, "Cercado próprio ou retorno à base não confirmado."
-    end
-    if not equipEgg(character, humanoid, label) then
-        return false, "Ovo na barra não identificado. Selecione e coloque manualmente."
     end
     local pen = plot:FindFirstChild("PenEggs")
     local reference, distance
@@ -624,23 +515,20 @@ local function placeEgg(character, root, label, before, allowed)
             if not distance or delta.Magnitude < distance then reference, distance = delta, delta.Magnitude end
         end
     end
-    if not reference or distance > 30 then
-        return false, "Interior do cercado não confirmado. Coloque o ovo manualmente."
-    end
-    if distance > 2 then
+    if reference and distance > 2 and distance <= 30 then
         local target = root.Position + reference.Unit * math.min(13, distance)
         humanoid:MoveTo(target)
-        local arrived = waitFor(2, function() return not allowed() or not root.Parent
+        waitFor(2, function() return not allowed() or not root.Parent
             or (root.Position - target).Magnitude <= 3 end)
-        humanoid:MoveTo(root.Position)
-        if not arrived or not root.Parent or not allowed() then return false, "Entrada no cercado não confirmada." end
+        if root.Parent then humanoid:MoveTo(root.Position) end
     end
     if ownPlot() ~= plot or not allowed() or carryingEgg() then return false, "Colocação cancelada." end
-    if not worldTap() then return false, "O executor não conseguiu tocar no jogo." end
-    local confirmed = waitFor(2.5, function()
-        return not allowed() or (tonumber(player:GetAttribute("PenEggs")) or -1) > before
+    collectionStatus.Text = "No seu cercado, selecione o ovo e toque na tela."
+    local confirmed = waitFor(60, function()
+        return not allowed() or ownPlot() ~= plot
+            or (tonumber(player:GetAttribute("PenEggs")) or -1) > before
     end)
-    if not confirmed or not allowed() then return false, "O jogo não confirmou a colocação." end
+    if not confirmed or not allowed() or ownPlot() ~= plot then return false, "Colocação não confirmada." end
     return true, "Ovo colocado no cercado."
 end
 
@@ -695,7 +583,7 @@ local function collectEgg(egg, fromAuto)
         local target = promptPosition(prompt)
         if not root or not target then return "Personagem ou ovo indisponível." end
         if not launchToPrado(root, allowed) then
-            return "Lançamento não confirmado. Abra o Prado manualmente."
+            return "Chegada ao Prado não confirmada no prazo."
         end
         if not allowed() or not prompt:IsDescendantOf(egg) then return "Coleta interrompida." end
         target = promptPosition(prompt)
@@ -717,7 +605,6 @@ local function collectEgg(egg, fromAuto)
         end
 
         local before = tonumber(player:GetAttribute("PenEggs"))
-        local eggLabel = prompt.ObjectText
         collectionStatus.Text = "Segurando a interação de coleta..."
         heldPrompt = prompt
         prompt:InputHoldBegin()
@@ -740,7 +627,7 @@ local function collectEgg(egg, fromAuto)
             return "Retorno à base não confirmado."
         end
         if not before then return "Contador do cercado indisponível." end
-        local placed, result = placeEgg(character, root, eggLabel, before, allowed)
+        local placed, result = placeEgg(character, root, before, allowed)
         return result, placed
     end)
     if heldPrompt then pcall(function() heldPrompt:InputHoldEnd() end) end
@@ -906,11 +793,13 @@ local function hatchReady()
             local position = promptPosition(prompt)
             if position and (root.Position - position).Magnitude <= math.max(8, prompt.MaxActivationDistance) then
                 local before = tonumber(player:GetAttribute("PenEggs"))
-                if not before or not clickControl(face) then return false end
-                local changed = waitFor(2, function()
-                    return not auto or (tonumber(player:GetAttribute("PenEggs")) or before) < before
+                if not before then return true end
+                collectionStatus.Text = "Ovo pronto no seu cercado. Toque em Chocar."
+                waitFor(20, function()
+                    return not auto or ownPlot() ~= plot or not visible(face)
+                        or (tonumber(player:GetAttribute("PenEggs")) or before) < before
                 end)
-                return changed
+                return true
             end
         end
     end
@@ -947,6 +836,12 @@ autoButton.Activated:Connect(function()
                     break
                 end
                 if not auto then break end
+                local character = player.Character
+                local root = character and character:FindFirstChild("HumanoidRootPart")
+                if not root or not launchToPrado(root, function() return auto and gui.Parent end) then
+                    collectionStatus.Text = auto and "Chegada ao Prado não confirmada." or "Auto Coletar desligado."
+                    break
+                end
                 local egg = autoTarget()
                 if egg then
                     if not collectEgg(egg, true) then break end
