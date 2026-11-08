@@ -16,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS 2 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DO BOSS · V3 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
@@ -43,7 +43,7 @@ local carryAt, endedAt
 local function vec(v) return v and string.format("%.1f,%.1f,%.1f",v.X,v.Y,v.Z) or "-" end
 local function log(kind, message)
     local rows=kind=="FX" and fx or lines
-    if #rows>=(kind=="FX" and 44 or 85) then dropped=dropped+1; return end
+    if #rows>=(kind=="FX" and 150 or 175) then dropped=dropped+1; return end
     local t=os.clock()-started
     table.insert(rows,{t=t,text=string.format("%.3fs | %s | %s",t,kind,message)})
 end
@@ -56,7 +56,7 @@ local function root()
 end
 local function carrying()
     local v=player:GetAttribute("Carrying")
-    return v==1 or v==true
+    return v==true or (tonumber(v) or 0)>0
 end
 local function walls(position)
     local folder=workspace:FindFirstChild("CarryWalls")
@@ -95,9 +95,15 @@ local function fxFolder(object)
     return path:find(".bossfx.",1,true) or path:find(".vfx.",1,true)
         or path:find(".effects.",1,true) or path:find(".bosses.",1,true)
 end
-for _,part in ipairs(workspace:GetDescendants()) do
-    if part:IsA("BasePart") and fxFolder(part) then track(part) end
+local function seedNearby(r)
+    if not r then return end
+    for _,part in ipairs(workspace:GetDescendants()) do
+        if part:IsA("BasePart") and ((part.Position-r.Position).Magnitude<=220 or fxFolder(part)) then
+            track(part)
+        end
+    end
 end
+seedNearby(root())
 listen(workspace.DescendantAdded,function(part)
     if not part:IsA("BasePart") then return end
     local r=root()
@@ -125,12 +131,21 @@ listen(prompts.PromptTriggered,function(prompt,who)
             .." | zona="..tostring(prompt.Parent and prompt.Parent:GetAttribute("Zone")))
     end
 end)
+local function movement(r)
+    local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if not r or not humanoid then return "personagem indisponível" end
+    local velocity=r.AssemblyLinearVelocity
+    return string.format("pos=%s WalkSpeed=%.1f realXZ=%.1f direção=%s noChão=%s",
+        vec(r.Position),humanoid.WalkSpeed,Vector3.new(velocity.X,0,velocity.Z).Magnitude,
+        vec(humanoid.MoveDirection),tostring(humanoid.FloorMaterial~=Enum.Material.Air))
+end
+
 local hp=player:GetAttribute("BossHP")
 listen(player:GetAttributeChangedSignal("BossHP"),function()
     local value=player:GetAttribute("BossHP")
     local r=root()
     if type(hp)=="number" and type(value)=="number" and hp>=0 and value>=0 and value<hp then
-        log("DANO",string.format("%.2f -> %.2f | pos=%s",hp,value,vec(r and r.Position)))
+        log("DANO",string.format("%.2f -> %.2f | %s",hp,value,movement(r)))
     elseif type(value)~="number" or value<0 then
         log("FIM BOSS","BossHP="..tostring(value))
     end
@@ -152,7 +167,7 @@ local function finish()
     for _,connection in ipairs(connections) do connection:Disconnect() end
     for _,row in ipairs(fx) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS 2 | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · V3 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -166,10 +181,13 @@ if carrying() then carryAt=os.clock() end
 task.spawn(function()
     local lastWall,lastMode,nextFX,nextModel=0,nil,0,0
     local seen={}
+    local nextSeed,nextMove=0,0
     while gui.Parent and not done do
         local now=os.clock()
         local r=root()
         if r and carryAt and not endedAt then
+            if now>=nextSeed then seedNearby(r); nextSeed=now+3 end
+            if now>=nextMove then log("MOVIMENTO",movement(r)); nextMove=now+.45 end
             if now-lastWall>6 then walls(r.Position); lastWall=now end
             if now>=nextModel then
                 nextModel=now+6
@@ -190,29 +208,30 @@ task.spawn(function()
                 end
             end
             if now>=nextFX then
-                nextFX=now+.18
+                nextFX=now+.035
                 for part in pairs(watched) do
                     if part.Parent then
                         local c,size=part.Color,part.Size
                         local thin=math.min(size.X,size.Y,size.Z)
                         local span=math.max(size.X,size.Y,size.Z)
-                        local red=c.R>.45 and c.R>c.G*1.35 and c.R>c.B*1.35
+                        local red=c.R>.38 and c.R>c.G*1.20 and c.R>c.B*1.20
                         if red and part.Transparency<.99 and span>=3 and (part.Position-r.Position).Magnitude<160+span/2 then
                             local prior=seen[part]
-                            if not prior or (part.Position-prior.pos).Magnitude>=5 or (size-prior.size).Magnitude>=5 then
-                                seen[part]={pos=part.Position,size=size}
-                                log("FX",string.format("%s | pos=%s tam=%s rot=%s tr=%.2f rgb=%d,%d,%d fino=%.1f",
+                            if not prior or (now-prior.t>=.10 and ((part.Position-prior.pos).Magnitude>=2
+                                or (size-prior.size).Magnitude>=2 or (part.Orientation-prior.rot).Magnitude>=8)) then
+                                seen[part]={pos=part.Position,size=size,rot=part.Orientation,t=now}
+                                log("FX",string.format("%s | pos=%s tam=%s rot=%s tr=%.2f rgb=%d,%d,%d fino=%.1f | jogador=%s",
                                     part:GetFullName(),vec(part.Position),vec(size),vec(part.Orientation),part.Transparency,
-                                    math.floor(c.R*255+.5),math.floor(c.G*255+.5),math.floor(c.B*255+.5),thin))
+                                    math.floor(c.R*255+.5),math.floor(c.G*255+.5),math.floor(c.B*255+.5),thin,vec(r.Position)))
                             end
-                        end
+                        else seen[part]=nil end
                     else watched[part]=nil; seen[part]=nil end
                 end
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS 2 · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V3 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
-        task.wait(.12)
+        task.wait(.035)
     end
 end)
