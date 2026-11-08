@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(45, 94, 165), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V6", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V7", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V6] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V7] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -426,11 +426,117 @@ hideEggs.Activated:Connect(function() eggsPanel.Visible = false end)
 eggsToggle.Activated:Connect(function() eggsPanel.Visible = not eggsPanel.Visible end)
 
 local list = make("ScrollingFrame", eggsPanel, {
-    Position = UDim2.fromOffset(6, 38), Size = UDim2.new(1, -12, 1, -44),
+    Position = UDim2.fromOffset(6, 38), Size = UDim2.new(1, -12, 1, -88),
     CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
     ScrollBarThickness = 4, BackgroundTransparency = 1, BorderSizePixel = 0,
 })
 make("UIListLayout", list, { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder })
+
+local collectionStatus = make("TextLabel", eggsPanel, {
+    Position = UDim2.new(0, 7, 1, -47), Size = UDim2.new(1, -14, 0, 42),
+    BackgroundColor3 = Color3.fromRGB(36, 51, 73), TextColor3 = Color3.fromRGB(229, 240, 255),
+    Text = "Escolha um ovo e toque em Coletar.", TextSize = 12, TextWrapped = true,
+    Font = Enum.Font.Gotham,
+})
+round(collectionStatus, 6)
+
+local collecting = false
+local function carryingEgg()
+    local value = player:GetAttribute("Carrying")
+    return value == 1 or value == true
+end
+
+local function promptPosition(prompt)
+    local host = prompt.Parent
+    if host:IsA("Attachment") then return host.WorldPosition end
+    if host:IsA("BasePart") then return host.Position end
+    if host:IsA("Model") then return host:GetPivot().Position end
+end
+
+local function approach(character, root, egg, target, reach)
+    local origin = root.Position
+    local ray = RaycastParams.new()
+    ray.FilterType = Enum.RaycastFilterType.Exclude
+    ray.RespectCanCollide = true
+    ray.FilterDescendantsInstances = { character, egg }
+    local radius = math.min(3, reach / 2)
+    for _, direction in ipairs(directions) do
+        local point = target + direction * radius
+        local ground = workspace:Raycast(point + Vector3.new(0, 7, 0), Vector3.new(0, -17, 0), ray)
+        if ground and ground.Normal.Y >= 0.65 then
+            local destination = ground.Position + Vector3.new(0, 3, 0)
+            local delta = destination - origin
+            if (destination - target).Magnitude <= reach and not workspace:Raycast(origin, delta, ray) then
+                if carryingEgg() then return false end
+                character:PivotTo(character:GetPivot() + delta)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function collectEgg(egg)
+    if collecting then return end
+    if carryingEgg() then collectionStatus.Text = "Você já está carregando um ovo."; return end
+    collecting = true
+    local heldPrompt
+    local ok, message = pcall(function()
+        local eggs = workspace:FindFirstChild("Eggs")
+        if not eggs or egg.Parent ~= eggs or tonumber(egg:GetAttribute("Zone")) ~= 1 then
+            return "Ovo indisponível. Escolha outro."
+        end
+        local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if not prompt or not prompt.Enabled or not prompt.ActionText:lower():find("pegar ovo", 1, true) then
+            return "A coleta desse ovo está indisponível."
+        end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local target = promptPosition(prompt)
+        if not root or not target then return "Personagem ou ovo indisponível." end
+
+        collectionStatus.Text = "Indo até o ovo..."
+        if (root.Position - target).Magnitude > prompt.MaxActivationDistance then
+            if not approach(character, root, egg, target, prompt.MaxActivationDistance) then
+                return "Sem trajeto livre. Aproxime-se e tente de novo."
+            end
+            task.wait(0.35)
+        end
+        if not gui.Parent or player.Character ~= character or not root.Parent then return "Coleta cancelada." end
+        if carryingEgg() then return "Você já está carregando um ovo." end
+        if not prompt:IsDescendantOf(egg) or not prompt.Enabled then return "Ovo indisponível." end
+        target = promptPosition(prompt)
+        if not target or (root.Position - target).Magnitude > prompt.MaxActivationDistance then
+            return "O jogo não manteve o personagem perto do ovo."
+        end
+
+        local before = tonumber(player:GetAttribute("PenEggs"))
+        collectionStatus.Text = "Segurando a interação de coleta..."
+        heldPrompt = prompt
+        prompt:InputHoldBegin()
+        local deadline = os.clock() + prompt.HoldDuration + 0.85
+        repeat task.wait(0.04) until carryingEgg() or not gui.Parent or player.Character ~= character
+            or os.clock() >= deadline
+        pcall(function() prompt:InputHoldEnd() end)
+        heldPrompt = nil
+        if not gui.Parent or player.Character ~= character then return "Coleta cancelada." end
+        if not carryingEgg() then return "O jogo não confirmou a coleta." end
+
+        enabled = true
+        toggle.Text = "Desligar esquiva"
+        collectionStatus.Text = "Ovo na mão · esquiva ligada."
+        while gui.Parent and carryingEgg() do task.wait(0.2) end
+        if not gui.Parent then return "Coleta cancelada." end
+        task.wait(0.65)
+        local after = tonumber(player:GetAttribute("PenEggs"))
+        if before and after and after > before then return "Ovo registrado no cercado." end
+        return "Transporte terminou. Confira o cercado."
+    end)
+    if heldPrompt then pcall(function() heldPrompt:InputHoldEnd() end) end
+    collecting = false
+    if not ok then warn("[Coleta Área 1] " .. tostring(message)) end
+    if gui.Parent then collectionStatus.Text = ok and message or "Erro na coleta. Veja o console." end
+end
 
 local order = { common = 1, comum = 1, uncommon = 2, incomum = 2, rare = 3, raro = 3,
     epic = 4, epico = 4, ["épico"] = 4, legendary = 5, lendario = 5, ["lendário"] = 5,
@@ -536,7 +642,7 @@ local function refreshEggs()
     for index = 1, math.min(#rows, 60) do
         local row = rows[index]
         local item = make("Frame", list, {
-            LayoutOrder = index, Size = UDim2.new(1, -5, 0, 52),
+            LayoutOrder = index, Size = UDim2.new(1, -5, 0, 82),
             BackgroundColor3 = Color3.fromRGB(36, 51, 73), BorderSizePixel = 0,
         })
         round(item, 6)
@@ -558,6 +664,13 @@ local function refreshEggs()
             TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
             TextColor3 = colors[row.rank] or Color3.fromRGB(211, 221, 238),
         })
+        local collect = make("TextButton", item, {
+            Text = "Coletar", Position = UDim2.fromOffset(5, 51), Size = UDim2.new(1, -10, 0, 26),
+            BackgroundColor3 = Color3.fromRGB(45, 94, 165), BorderSizePixel = 0,
+            TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
+        })
+        round(collect, 5)
+        collect.Activated:Connect(function() collectEgg(row.object) end)
     end
 end
 
