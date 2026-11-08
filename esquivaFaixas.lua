@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V12", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V13", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V12] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V13] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -887,7 +887,85 @@ local function findEggTool(character, name, previousTools)
     return match(player:FindFirstChildOfClass("Backpack"))
 end
 
-local function placeInPen(character, root, pen, name, previousTools)
+local function hotbarSnapshot()
+    local inventory = guiParent:FindFirstChild("Inventory")
+    local bar = inventory and inventory:FindFirstChild("Hotbar")
+    local slots = {}
+    for _, slot in ipairs(bar and bar:GetDescendants() or {}) do
+        if slot.Name == "BarSlot" and slot:IsA("GuiObject") then table.insert(slots, slot) end
+    end
+    table.sort(slots, function(a, b)
+        if a.LayoutOrder ~= b.LayoutOrder then return a.LayoutOrder < b.LayoutOrder end
+        return a.AbsolutePosition.X < b.AbsolutePosition.X
+    end)
+    local result = {}
+    for index, slot in ipairs(slots) do
+        local evidence, labels = {}, {}
+        local nodes = slot:GetDescendants()
+        table.insert(nodes, 1, slot)
+        for _, node in ipairs(nodes) do
+            for key, value in pairs(node:GetAttributes()) do
+                local lower = key:lower()
+                if lower:find("item", 1, true) or lower:find("egg", 1, true)
+                    or lower == "count" or lower == "amount" then
+                    table.insert(evidence, node.Name .. ":" .. key .. "=" .. tostring(value))
+                end
+            end
+            if node:IsA("TextLabel") or node:IsA("TextButton") then
+                if node.Text ~= "" and node.Visible then
+                    table.insert(labels, node.Text)
+                    table.insert(evidence, node.Name .. ":text=" .. node.Text)
+                end
+            elseif (node:IsA("ImageLabel") or node:IsA("ImageButton")) and node.Visible and node.Image ~= "" then
+                table.insert(evidence, node.Name .. ":image=" .. node.Image)
+            elseif node:IsA("ObjectValue") and node.Value then
+                table.insert(evidence, node.Name .. ":value=" .. node.Value:GetFullName())
+            end
+        end
+        table.sort(evidence)
+        local button = slot:IsA("GuiButton") and slot or slot:FindFirstChild("Face", true)
+        if button and not button:IsA("GuiButton") then button = nil end
+        result[index] = { button = button, fingerprint = table.concat(evidence, "|"), labels = labels }
+    end
+    return result
+end
+
+local function newEggSlot(previous, name)
+    local matched, changes = {}, {}
+    for index, row in ipairs(hotbarSnapshot()) do
+        local before = previous[index]
+        if row.button and visibleControl(row.button) and row.fingerprint ~= ""
+            and (not before or before.fingerprint ~= row.fingerprint) then
+            table.insert(changes, row.button)
+            if name and name ~= "" and table.find(row.labels, name) then
+                table.insert(matched, row.button)
+            end
+        end
+    end
+    if #matched == 1 then return matched[1] end
+    if #changes == 1 then return changes[1] end
+end
+
+local function tapWorld()
+    local camera = workspace.CurrentCamera
+    if not camera or type(firesignal) ~= "function" then return false end
+    for _, x in ipairs({ 0.50, 0.43, 0.57 }) do
+        local point = Vector2.new(camera.ViewportSize.X * x, camera.ViewportSize.Y * 0.68)
+        local blocked = false
+        for _, item in ipairs(guiParent:GetGuiObjectsAtPosition(point.X, point.Y)) do
+            if item:IsA("GuiButton") or item.Active or item:IsDescendantOf(gui) then
+                blocked = true
+                break
+            end
+        end
+        if not blocked then
+            return pcall(firesignal, inputService.TouchTapInWorld, point, false)
+        end
+    end
+    return false
+end
+
+local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
     local before = tonumber(player:GetAttribute("PenEggs"))
     if not before then return false, "Contador do cercado indisponível." end
     local nearest, distance
@@ -899,25 +977,38 @@ local function placeInPen(character, root, pen, name, previousTools)
         end
     end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
-    local tool = name and name ~= "" and findEggTool(character, name, previousTools)
-    if humanoid and tool and nearest and distance <= 30 then
+    if humanoid and nearest and distance <= 30 then
         collectionStatus.Text = "Entrando no seu cercado..."
         local target = root.Position + nearest
         humanoid:MoveTo(target)
         local reached = waitFor(root, 4, function()
-            return not auto or (root.Position - target).Magnitude <= 3
+            return not auto or (root.Position - target).Magnitude <= 2
         end)
         if root.Parent then humanoid:MoveTo(root.Position) end
         if not auto or not root.Parent then return false, "Ciclo interrompido." end
         if reached and ownPen() == pen then
-            if tool.Parent ~= character then humanoid:EquipTool(tool) end
-            task.wait(0.2)
-            if auto and gui.Parent and ownPen() == pen and tool.Parent == character then
-                collectionStatus.Text = "Colocando ovo no cercado..."
-                tool:Activate()
-                if waitFor(root, 3, function()
-                    return (tonumber(player:GetAttribute("PenEggs")) or before) > before
-                end) then return true end
+            local function placed()
+                return (tonumber(player:GetAttribute("PenEggs")) or before) > before
+            end
+            local tool = name and name ~= "" and findEggTool(character, name, previousTools)
+            if tool then
+                if tool.Parent ~= character then humanoid:EquipTool(tool) end
+                task.wait(0.2)
+                if auto and gui.Parent and ownPen() == pen and tool.Parent == character then
+                    collectionStatus.Text = "Colocando ovo no cercado..."
+                    tool:Activate()
+                    if waitFor(root, 2, placed) then return true end
+                end
+            else
+                local slot = newEggSlot(previousSlots, name)
+                if slot and auto and ownPen() == pen then
+                    collectionStatus.Text = "Selecionando o ovo novo na barra..."
+                    if signalFace(slot, input, clicks) then
+                        if waitFor(root, 0.45, placed) then return true end
+                        if auto and gui.Parent and ownPen() == pen and tapWorld()
+                            and waitFor(root, 3, placed) then return true end
+                    end
+                end
             end
         end
     end
@@ -995,6 +1086,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local egg = waitFor(root, 8, function() return not auto or bestEgg(root) end)
                 if not auto then return "Ciclo desligado." end
                 if not egg then return "Nenhum ovo disponível no Prado." end
+                local previousSlots = hotbarSnapshot()
                 local previousTools = {}
                 for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack") }) do
                     for _, tool in ipairs(container:GetChildren()) do
@@ -1005,7 +1097,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 if not collected then return collectionStatus.Text end
                 local pen = ownPen()
                 if not pen then return "Seu cercado não foi encontrado." end
-                local placed, problem = placeInPen(character, root, pen, name, previousTools)
+                local placed, problem = placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
                 if not placed then return problem end
                 local hatched, hatchProblem = hatchReady(root, pen, input, clicks)
                 if not hatched then return hatchProblem end
@@ -1018,6 +1110,6 @@ autoButton.Activated:Connect(function(input, clicks)
             setAuto(false)
             collectionStatus.Text = ok and reason or "Erro no ciclo. Veja o console."
         end
-        if not ok then warn("[Auto Coletar V12] " .. tostring(reason)) end
+        if not ok then warn("[Auto Coletar V13] " .. tostring(reason)) end
     end)
 end)
