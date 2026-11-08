@@ -32,14 +32,15 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(45, 94, 165), BorderSizePixel = 0,
     })
 end
-control("TextLabel", "ESQUIVA DAS FAIXAS V2", 4, 24)
+control("TextLabel", "ESQUIVA DAS FAIXAS V4", 4, 24)
 local status = control("TextLabel", "Pegue o ovo e ative por 30 s.", 29, 43)
 local toggle = control("TextButton", "Ativar por 30 s", 78, 36)
 make("UICorner", toggle, { CornerRadius = UDim.new(0, 7) })
 
 local DURATION, LINGER = 30, 0.35
-local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 3.5
-local MIN_STEP, MAX_STEP, JUMP_INTERVAL = 9, 36, 0.65
+local LOOKAHEAD = { 0.12, 0.24, 0.36 }
+local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 6
+local MIN_STEP, MAX_STEP, JUMP_INTERVAL = 24, 64, 0.12
 local directions = {}
 for index = 0, 23 do
     local angle = index * math.pi / 12
@@ -54,15 +55,67 @@ local function finish(session, message)
     toggle.Text = "Ativar por 30 s"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print("[Esquiva] " .. status.Text)
+    print(string.format("[Esquiva V4] %s | último salto lateral %.1f studs",
+        status.Text, session.lastDistance))
 end
 
 local function isWarning(part)
     local color, size = part.Color, part.Size
     return color.R >= 0.9 and color.G <= 0.3 and color.B <= 0.3
-        and part.Transparency >= 0.65 and part.Transparency <= 0.9
+        and part.Transparency >= 0.25 and part.Transparency <= 0.9
         and math.min(size.X, size.Y, size.Z) <= 0.5
         and math.max(size.X, size.Y, size.Z) >= 7
+end
+
+local function updateWarning(previous, part, now)
+    local frame, size = part.CFrame, part.Size
+    local warning = {
+        frame = frame, size = size, seen = now,
+        static = part.Transparency >= 0.65,
+        movingUntil = previous and previous.movingUntil or 0,
+        velocity = Vector3.zero, growth = Vector3.zero,
+    }
+    if previous then
+        local elapsed = now - previous.seen
+        if elapsed > 0 and elapsed < 0.25 then
+            local shift = frame.Position - previous.frame.Position
+            local sizeChange = size - previous.size
+            warning.velocity = Vector3.new(shift.X, 0, shift.Z) / elapsed
+            if warning.velocity.Magnitude > 180 then warning.velocity = warning.velocity.Unit * 180 end
+            warning.growth = Vector3.new(
+                math.clamp(sizeChange.X / elapsed, 0, 160),
+                math.clamp(sizeChange.Y / elapsed, 0, 160),
+                math.clamp(sizeChange.Z / elapsed, 0, 160)
+            )
+            if warning.velocity.Magnitude > 2 or warning.growth.Magnitude > 3 then
+                warning.movingUntil = now + 0.25
+            end
+        end
+    end
+    return warning
+end
+
+local function projectWarnings(tracked, now)
+    local areas, waves = {}, 0
+    for part, warning in pairs(tracked) do
+        if now - warning.seen > LINGER then
+            tracked[part] = nil
+        elseif warning.static or warning.movingUntil >= now then
+            table.insert(areas, warning)
+            if warning.movingUntil >= now then
+                waves = waves + 1
+                if warning.seen == now then
+                    for _, seconds in ipairs(LOOKAHEAD) do
+                        table.insert(areas, {
+                            frame = warning.frame + warning.velocity * seconds,
+                            size = warning.size + warning.growth * seconds,
+                        })
+                    end
+                end
+            end
+        end
+    end
+    return areas, waves
 end
 
 local function inside(position, warning, margin)
@@ -93,7 +146,7 @@ local function safeStep(root, warnings, ray, bossPosition)
     local clearance = origin.Y - currentFloor.Position.Y
     local bossDistance = bossPosition and horizontalDistance(origin, bossPosition)
     local minimumBossDistance = bossDistance and math.max(bossDistance, math.min(26, math.max(14, bossDistance + 5)))
-    for distance = MIN_STEP, MAX_STEP do
+    for distance = MAX_STEP, MIN_STEP, -2 do
         local best, bestDistance
         for _, direction in ipairs(directions) do
             local candidate = origin + direction * distance
@@ -130,7 +183,7 @@ toggle.Activated:Connect(function()
         return
     end
 
-    local session = { moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {} }
+    local session = { moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0 }
     local deadline = os.clock() + DURATION
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
@@ -166,37 +219,47 @@ toggle.Activated:Connect(function()
                 if folder then
                     for _, part in ipairs(folder:GetChildren()) do
                         if part:IsA("BasePart") and isWarning(part) then
-                            session.warnings[part] = { frame = part.CFrame, size = part.Size, seen = now }
+                            session.warnings[part] = updateWarning(session.warnings[part], part, now)
                         end
                     end
                 end
-                for part, warning in pairs(session.warnings) do
-                    if now - warning.seen > LINGER then session.warnings[part] = nil end
-                end
-
-                local danger = threatened(root.Position, session.warnings, TRIGGER_MARGIN)
+                local areas, waves = projectWarnings(session.warnings, now)
+                local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
                 local message = danger and "Buscando saída" or "Fora das marcas"
                 if danger and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    local boss = folder and folder:FindFirstChild("Touro Gigante")
-                    local bossPosition = boss and boss:IsA("Model") and boss:GetPivot().Position or nil
-                    local delta = safeStep(root, session.warnings, ray, bossPosition)
+                    local bossPosition
+                    local nearestBoss = math.huge
+                    if folder then
+                        for _, model in ipairs(folder:GetChildren()) do
+                            if model:IsA("Model") and (model:FindFirstChildOfClass("Humanoid")
+                                or model.Name == "Touro Gigante" or model.Name:lower():find("boss", 1, true)) then
+                                local position = model:GetPivot().Position
+                                local distance = horizontalDistance(root.Position, position)
+                                if distance < nearestBoss then
+                                    bossPosition, nearestBoss = position, distance
+                                end
+                            end
+                        end
+                    end
+                    local delta = safeStep(root, areas, ray, bossPosition)
                     if delta then
                         character:PivotTo(character:GetPivot() + delta)
                         session.moves = session.moves + 1
+                        session.lastDistance = horizontalDistance(Vector3.zero, delta)
                         lastMove = now
                         message = "Saída solicitada"
                     else
-                        message = "Sem saída livre em até 36 studs"
+                        message = "Sem saída livre entre 24 e 64 studs"
                     end
                 end
                 if now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
-                status.Text = string.format("%ds · HP %.2f · %d quedas\n%s · %d esquivas",
-                    math.ceil(deadline - now), hp, session.hits, message, session.moves)
+                status.Text = string.format("%ds · HP %.2f · Ondas %d\n%s · Última: %.0f studs",
+                    math.ceil(deadline - now), hp, waves, message, session.lastDistance)
                 task.wait(0.04)
             end
         end)
