@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V16", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V17", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,23 +76,25 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V16] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V17] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
-local function isWarning(part)
+local function isWarning(part, position)
     local color, size = part.Color, part.Size
-    return color.R >= 0.9 and color.G <= 0.3 and color.B <= 0.3
-        and part.Transparency >= 0.25 and part.Transparency <= 0.9
-        and math.min(size.X, size.Y, size.Z) <= 0.5
-        and math.max(size.X, size.Y, size.Z) >= 7
+    local thin = math.min(size.X, size.Y, size.Z)
+    local span = math.max(size.X, size.Y, size.Z)
+    return color.R >= 0.55 and color.R > color.G * 1.45 and color.R > color.B * 1.45
+        and part.Transparency < 0.98 and thin <= 2 and span >= 5
+        and math.abs(part.Position.Y - position.Y) <= 14
+        and Vector3.new(part.Position.X-position.X, 0, part.Position.Z-position.Z).Magnitude <= 150 + span / 2
 end
 
 local function updateWarning(previous, part, now)
     local frame, size = part.CFrame, part.Size
     local warning = {
         frame = frame, size = size, seen = now,
-        static = part.Transparency >= 0.65,
+        static = part.Transparency >= 0.60 or math.max(size.X, size.Y, size.Z) >= 18,
         movingUntil = previous and previous.movingUntil or 0,
         velocity = Vector3.zero, growth = Vector3.zero,
     }
@@ -307,39 +309,66 @@ local function startFight()
                     session.walking = false
                 end
                 local folder = workspace:FindFirstChild("BossFX")
-                if folder then
-                    for _, part in ipairs(folder:GetChildren()) do
-                        if part:IsA("BasePart") and isWarning(part) then
-                            session.warnings[part] = updateWarning(session.warnings[part], part, now)
+                if now - (session.effectsAt or -math.huge) >= 0.12 then
+                    session.effectsAt = now
+                    session.fxParts = {}
+                    session.bosses = {}
+                    local known = {
+                        ["Touro Gigante"] = true, ["Escaravelho Rei"] = true, ["Yeti Ancião"] = true,
+                        ["Golem de Magma"] = true, ["Titã Cósmico"] = true,
+                    }
+                    local function scan(container)
+                        for _, object in ipairs(container:GetDescendants()) do
+                            if object:IsA("BasePart") then
+                                table.insert(session.fxParts, object)
+                            elseif object:IsA("Model") and (known[object.Name] or object:GetAttribute("BossId") ~= nil
+                                or object:GetAttribute("IsBoss") == true or object:FindFirstChildOfClass("Humanoid")
+                                or object.Name:lower():find("boss", 1, true)) then
+                                table.insert(session.bosses, object)
+                            end
+                        end
+                    end
+                    if folder then scan(folder) end
+                    for _, child in ipairs(workspace:GetChildren()) do
+                        local name = child.Name:lower()
+                        if child ~= folder and (name == "effects" or name == "vfx" or name == "bosses"
+                            or name:find("bossfx", 1, true)) then
+                            scan(child)
+                        elseif child:IsA("BasePart") then
+                            table.insert(session.fxParts, child)
+                        elseif child:IsA("Model") and (known[child.Name] or child:GetAttribute("IsBoss") == true) then
+                            table.insert(session.bosses, child)
+                        end
+                    end
+                end
+                for _, part in ipairs(session.fxParts) do
+                    if part.Parent and isWarning(part, root.Position) then
+                        session.warnings[part] = updateWarning(session.warnings[part], part, now)
+                    end
+                end
+                local bossPosition, nearestBoss = nil, math.huge
+                for _, boss in ipairs(session.bosses) do
+                    if boss.Parent then
+                        local position = boss:GetPivot().Position
+                        local distance = horizontalDistance(root.Position, position)
+                        if math.abs(position.Y - root.Position.Y) <= 30 and distance < nearestBoss then
+                            bossPosition, nearestBoss = position, distance
                         end
                     end
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
+                local closeBoss = nearestBoss <= 23 and now - lastMove >= 1.2
                 local message = not insideArena and "Aguardando perímetro fechado"
-                    or (danger and "Buscando saída interna" or "Dentro da arena")
-                if insideArena and danger and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
+                    or (danger and "Buscando saída interna" or (closeBoss and "Afastando do boss" or "Dentro da arena"))
+                if insideArena and (danger or closeBoss) and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    local bossPosition
-                    local nearestBoss = math.huge
-                    if folder then
-                        for _, model in ipairs(folder:GetChildren()) do
-                            if model:IsA("Model") and (model:FindFirstChildOfClass("Humanoid")
-                                or model.Name == "Touro Gigante" or model.Name:lower():find("boss", 1, true)) then
-                                local position = model:GetPivot().Position
-                                local distance = horizontalDistance(root.Position, position)
-                                if distance < nearestBoss then
-                                    bossPosition, nearestBoss = position, distance
-                                end
-                            end
-                        end
-                    end
                     local shortRange = math.floor(math.min(5, humanoid.WalkSpeed * 0.18))
                     local short
                     local immediate = threatened(root.Position, areas, TRIGGER_MARGIN, true)
                     local waiting = session.walking and not immediate and now < (session.runUntil or 0)
-                    if not waiting and not immediate and waves > 0 and shortRange >= 2 and now >= (session.nextRun or 0) then
+                    if not closeBoss and not waiting and not immediate and waves > 0 and shortRange >= 2 and now >= (session.nextRun or 0) then
                         short = safeStep(root, areas, ray, nil, shortRange, bounds)
                     end
                     local delta
@@ -1104,13 +1133,9 @@ local function performPlacement(character, root, pen, name, previousTools, previ
     end
 
     if not eligible() then return false, "Ciclo interrompido." end
-    collectionStatus.Text = pending .. ". Coloque manualmente para retomar."
-    warn("[Colocação V16] " .. pending)
-    while gui.Parent and auto and root.Parent and ownPen() == pen do
-        if placed() then return true end
-        task.wait(0.2)
-    end
-    return false, "Colocação não confirmada."
+    collectionStatus.Text = pending .. " · confirmando..."
+    if confirm(3) then return true end
+    return false, pending .. ". Colocação não confirmada."
 end
 
 local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
@@ -1195,48 +1220,75 @@ autoButton.Activated:Connect(function(input, clicks)
     setAuto(true)
     looping = true
     task.spawn(function()
-        local ok, reason = pcall(function()
-            while gui.Parent and auto do
-                local character = player.Character
-                local root = character and character:FindFirstChild("HumanoidRootPart")
-                if not root then return "Personagem indisponível." end
-                local nearby, distance = nearestEggZone(root.Position)
-                if root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230 then
-                    local launched, problem = launchZone(character, root, input, clicks,
-                        function() return auto and gui.Parent end, zoneNumber)
-                    if not launched then return problem end
-                end
-                if not gui.Parent or not auto then return "Ciclo desligado." end
-                local egg = waitFor(root, 8, function() return not auto or bestEgg(root, zoneNumber) end)
-                if not auto then return "Ciclo desligado." end
-                if not egg then return "Nenhum ovo disponível na Área " .. zoneNumber .. "." end
-                local previousSlots = hotbarSnapshot()
-                local previousTools = {}
-                for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack") }) do
-                    for _, tool in ipairs(container:GetChildren()) do
-                        if tool:IsA("Tool") then previousTools[tool] = true end
-                    end
-                end
-                local collected, name = collectEgg(egg, input, clicks, true)
-                if not collected then return collectionStatus.Text end
-                local pen = ownPen()
-                if not pen then return "Seu cercado não foi encontrado." end
-                local placed, problem = placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
-                if not placed then return problem end
-                local hatched, hatchProblem = hatchReady(root, pen, input, clicks)
-                if not hatched and auto then
-                    warn("[Eclosão] " .. tostring(hatchProblem) .. " · coleta continua")
-                end
-                task.wait(0.7)
+        local failures, depositsSkipped = 0, 0
+        local function runRound()
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if not root then return false, "Aguardando personagem" end
+            if carryingEgg() then return false, "Aguardando fim do transporte" end
+            local nearby, distance = nearestEggZone(root.Position)
+            if root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230 then
+                local launched, problem = launchZone(character, root, input, clicks,
+                    function() return auto and gui.Parent end, zoneNumber)
+                if not launched then return false, problem end
             end
-            return "Ciclo desligado."
-        end)
+            if not gui.Parent or not auto then return false, "Ciclo desligado" end
+            local egg = waitFor(root, 8, function() return not auto or bestEgg(root, zoneNumber) end)
+            if not auto then return false, "Ciclo desligado" end
+            if not egg then return false, "Aguardando ovos da Área " .. zoneNumber end
+            local previousSlots = hotbarSnapshot()
+            local previousTools = {}
+            for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack") }) do
+                for _, tool in ipairs(container:GetChildren()) do
+                    if tool:IsA("Tool") then previousTools[tool] = true end
+                end
+            end
+            local collected, name = collectEgg(egg, input, clicks, true)
+            if not collected then return false, collectionStatus.Text end
+            if not auto then return false, "Ciclo desligado" end
+            local pen = ownPen()
+            local deposited, problem
+            if pen then
+                local ran, result, message = pcall(placeInPen, character, root, pen, name,
+                    previousTools, previousSlots, input, clicks)
+                deposited = ran and result
+                problem = ran and message or tostring(result)
+            else
+                problem = "Seu cercado não foi encontrado"
+            end
+            if not deposited then
+                depositsSkipped = depositsSkipped + 1
+                warn("[Colocação V17] " .. tostring(problem) .. " · coleta continua")
+                return true, "Colocação não confirmada · seguindo"
+            end
+            if auto and pen then
+                local ran, hatched, hatchProblem = pcall(hatchReady, root, pen, input, clicks)
+                if not ran or not hatched then warn("[Eclosão] " .. tostring(ran and hatchProblem or hatched)) end
+            end
+            return true, "Ovo colocado · próxima rodada"
+        end
+        while gui.Parent and auto do
+            local ok, success, reason = pcall(runRound)
+            if not gui.Parent or not auto then break end
+            if ok and success then
+                failures = 0
+                collectionStatus.Text = reason
+            else
+                failures = failures + 1
+                local detail = ok and reason or tostring(success)
+                collectionStatus.Text = tostring(detail) .. " · tentando novamente"
+                if not ok then warn("[Auto Coletar V17] " .. detail) end
+            end
+            autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
+            local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
+            local untilTime = os.clock() + delay
+            while gui.Parent and auto and os.clock() < untilTime do task.wait(0.2) end
+        end
         looping = false
         if gui.Parent then
             setAuto(false)
-            collectionStatus.Text = ok and reason or "Erro no ciclo. Veja o console."
+            collectionStatus.Text = "Ciclo desligado."
         end
-        if not ok then warn("[Auto Coletar V16] " .. tostring(reason)) end
     end)
 end)
 
