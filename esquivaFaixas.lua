@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V17", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V19", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -57,7 +57,7 @@ end)
 local LINGER = 0.35
 local LOOKAHEAD = { 0.06, 0.12, 0.18, 0.24, 0.30, 0.36, 0.44, 0.52 }
 local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 8
-local MIN_STEP, MAX_STEP, JUMP_INTERVAL = 12, 96, 0.12
+local MAX_RUN_DISTANCE, JUMP_INTERVAL = 24, 0.12
 local directions = {}
 for index = 0, 23 do
     local angle = index * math.pi / 12
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V17] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V19] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -224,15 +224,15 @@ local function inCage(point, bounds, margin)
         and point.Z >= bounds.minZ + margin and point.Z <= bounds.maxZ - margin
 end
 
-local function safeStep(root, warnings, ray, bossPosition, shortRange, bounds)
+local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar)
     local origin = root.Position
     local currentFloor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
     if not currentFloor or currentFloor.Normal.Y < 0.65 then return end
     local clearance = origin.Y - currentFloor.Position.Y
     local bossDistance = bossPosition and horizontalDistance(origin, bossPosition)
-    local minimumBossDistance = bossDistance and math.max(bossDistance, math.min(40, math.max(18, bossDistance + 8)))
-    local first, last, increment = MAX_STEP, MIN_STEP, -2
-    if shortRange then first, last, increment = 2, shortRange, 1 end
+    local minimumBossDistance = bossDistance and (preferFar and bossDistance + 4 or math.max(0, bossDistance - 2))
+    local first, last, increment = 2, MAX_RUN_DISTANCE, 1
+    if preferFar then first, last, increment = MAX_RUN_DISTANCE, 5, -1 end
     for distance = first, last, increment do
         local best, bestDistance
         for _, direction in ipairs(directions) do
@@ -240,7 +240,7 @@ local function safeStep(root, warnings, ray, bossPosition, shortRange, bounds)
             local distanceFromBoss = bossPosition and horizontalDistance(candidate, bossPosition)
             if inCage(candidate, bounds, 4)
                 and (not minimumBossDistance or distanceFromBoss >= minimumBossDistance)
-                and not threatened(candidate, warnings, EXIT_MARGIN) then
+                and not threatened(candidate, warnings, margin) then
                 local floor = workspace:Raycast(candidate + Vector3.new(0, 2, 0), Vector3.new(0, -20, 0), ray)
                 if floor and floor.Normal.Y >= 0.65
                     and math.abs(floor.Position.Y - currentFloor.Position.Y) <= 2 then
@@ -290,7 +290,7 @@ local function startFight()
     end)
 
     task.spawn(function()
-        local lastMove, lastScan, lastJump = -math.huge, -math.huge, -math.huge
+        local lastScan, lastJump = -math.huge, -math.huge
         local bounds, checkedAt = nil, -math.huge
         local ok, err = pcall(function()
             while gui.Parent and active == session do
@@ -358,41 +358,35 @@ local function startFight()
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
-                local closeBoss = nearestBoss <= 23 and now - lastMove >= 1.2
-                local message = not insideArena and "Aguardando perímetro fechado"
-                    or (danger and "Buscando saída interna" or (closeBoss and "Afastando do boss" or "Dentro da arena"))
-                if insideArena and (danger or closeBoss) and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
+                local closeBoss = nearestBoss <= 23
+                local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
+                local goal = session.runGoal
+                if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
+                    or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
+                    or horizontalDistance(root.Position, goal) <= 1.5) then
+                    humanoid:MoveTo(root.Position)
+                    session.walking, session.runGoal = false, nil
+                end
+                if session.walking then message = "Correndo para fora do ataque" end
+
+                if insideArena and not session.walking and (danger or closeBoss) and now - lastScan >= 0.08 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    local shortRange = math.floor(math.min(5, humanoid.WalkSpeed * 0.18))
-                    local short
-                    local immediate = threatened(root.Position, areas, TRIGGER_MARGIN, true)
-                    local waiting = session.walking and not immediate and now < (session.runUntil or 0)
-                    if not closeBoss and not waiting and not immediate and waves > 0 and shortRange >= 2 and now >= (session.nextRun or 0) then
-                        short = safeStep(root, areas, ray, nil, shortRange, bounds)
-                    end
-                    local delta
-                    if short then
-                        humanoid:MoveTo(root.Position + short)
-                        session.nextRun = now + 0.55
-                        session.runUntil = now + 0.18
-                        session.walking = true
-                        message = "Saída a pé"
-                    elseif not waiting then
-                        delta = safeStep(root, areas, ray, bossPosition, nil, bounds)
+                    local delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, not danger)
+                    if not delta and danger then
+                        delta = safeStep(root, areas, ray, nil, bounds, 2.5, false)
                     end
                     if delta then
-                        if session.walking then
-                            humanoid:MoveTo(root.Position)
-                            session.walking = false
-                        end
-                        character:PivotTo(character:GetPivot() + delta)
+                        local distance = horizontalDistance(Vector3.zero, delta)
+                        session.runGoal = root.Position + delta
+                        session.runUntil = now + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
+                        session.walking = true
+                        humanoid:MoveTo(session.runGoal)
                         session.moves = session.moves + 1
-                        session.lastDistance = horizontalDistance(Vector3.zero, delta)
-                        lastMove = now
-                        message = "Saída solicitada"
-                    elseif not short and not waiting then
-                        message = "Sem saída interna livre"
+                        session.lastDistance = distance
+                        message = "Correndo para fora do ataque"
+                    else
+                        message = "Sem saída interna livre a pé"
                     end
                 end
                 if inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
@@ -732,12 +726,18 @@ local function collectEgg(egg, input, clicks, fromAuto)
         local name = prompt.ObjectText
         collectionStatus.Text = "Segurando a interação de coleta..."
         heldPrompt = prompt
+        local holdDuration = math.max(0, prompt.HoldDuration)
         prompt:InputHoldBegin()
-        local deadline = os.clock() + prompt.HoldDuration + 0.85
-        repeat task.wait(0.04) until carryingEgg() or not allowed() or player.Character ~= character
-            or os.clock() >= deadline
+        local releaseAt = os.clock() + holdDuration
+        while os.clock() < releaseAt and allowed() and player.Character == character and prompt.Parent do
+            task.wait(math.min(0.04, math.max(0, releaseAt - os.clock())))
+        end
         pcall(function() prompt:InputHoldEnd() end)
         heldPrompt = nil
+        local confirmationEnd = os.clock() + 1.25
+        while not carryingEgg() and allowed() and player.Character == character and os.clock() < confirmationEnd do
+            task.wait(0.04)
+        end
         if not allowed() or player.Character ~= character then return "Coleta cancelada." end
         if not carryingEgg() then return "O jogo não confirmou a coleta." end
 
@@ -1258,7 +1258,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if not deposited then
                 depositsSkipped = depositsSkipped + 1
-                warn("[Colocação V17] " .. tostring(problem) .. " · coleta continua")
+                warn("[Colocação V19] " .. tostring(problem) .. " · coleta continua")
                 return true, "Colocação não confirmada · seguindo"
             end
             if auto and pen then
@@ -1277,7 +1277,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V17] " .. detail) end
+                if not ok then warn("[Auto Coletar V19] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
