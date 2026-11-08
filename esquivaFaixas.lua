@@ -20,10 +20,10 @@ local function round(object, radius)
     make("UICorner", object, { CornerRadius = UDim.new(0, radius) })
 end
 local panel = make("Frame", gui, {
-    Position = UDim2.fromOffset(12, 12), Size = UDim2.new(0.49, 0, 0, 151),
+    Position = UDim2.fromOffset(12, 12), Size = UDim2.new(0.49, 0, 0, 220),
     BackgroundColor3 = Color3.fromRGB(30, 10, 13), BorderSizePixel = 0,
 })
-make("UISizeConstraint", panel, { MaxSize = Vector2.new(345, 151) })
+make("UISizeConstraint", panel, { MaxSize = Vector2.new(345, 220) })
 make("UICorner", panel, { CornerRadius = UDim.new(0, 10) })
 
 local function control(class, text, y, height)
@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V15", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V16", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -43,21 +43,21 @@ minimize.Position, minimize.Size = UDim2.new(1, -36, 0, 6), UDim2.fromOffset(29,
 round(minimize, 6)
 local status = control("TextLabel", "Desligada", 38, 49)
 local toggle = control("TextButton", "Ligar esquiva", 92, 29)
-local eggsToggle = control("TextButton", "Ovos da Área 1", 124, 21)
+local eggsToggle = control("TextButton", "Lista de ovos", 124, 21)
 round(toggle, 7)
 round(eggsToggle, 6)
 local collapsed = false
 minimize.Activated:Connect(function()
     collapsed = not collapsed
     status.Visible, toggle.Visible, eggsToggle.Visible = not collapsed, not collapsed, not collapsed
-    panel.Size = UDim2.new(0.49, 0, 0, collapsed and 40 or 151)
+    panel.Size = UDim2.new(0.49, 0, 0, collapsed and 40 or 220)
     minimize.Text = collapsed and "+" or "−"
 end)
 
 local LINGER = 0.35
 local LOOKAHEAD = { 0.06, 0.12, 0.18, 0.24, 0.30, 0.36, 0.44, 0.52 }
-local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 6
-local MIN_STEP, MAX_STEP, JUMP_INTERVAL = 24, 64, 0.12
+local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 8
+local MIN_STEP, MAX_STEP, JUMP_INTERVAL = 12, 96, 0.12
 local directions = {}
 for index = 0, 23 do
     local angle = index * math.pi / 12
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V15] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V16] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -228,7 +228,7 @@ local function safeStep(root, warnings, ray, bossPosition, shortRange, bounds)
     if not currentFloor or currentFloor.Normal.Y < 0.65 then return end
     local clearance = origin.Y - currentFloor.Position.Y
     local bossDistance = bossPosition and horizontalDistance(origin, bossPosition)
-    local minimumBossDistance = bossDistance and math.max(bossDistance, math.min(26, math.max(14, bossDistance + 5)))
+    local minimumBossDistance = bossDistance and math.max(bossDistance, math.min(40, math.max(18, bossDistance + 8)))
     local first, last, increment = MAX_STEP, MIN_STEP, -2
     if shortRange then first, last, increment = 2, shortRange, 1 end
     for distance = first, last, increment do
@@ -426,7 +426,7 @@ hideEggs.Activated:Connect(function() eggsPanel.Visible = false end)
 eggsToggle.Activated:Connect(function() eggsPanel.Visible = not eggsPanel.Visible end)
 
 local list = make("ScrollingFrame", eggsPanel, {
-    Position = UDim2.fromOffset(6, 38), Size = UDim2.new(1, -12, 1, -122),
+    Position = UDim2.fromOffset(6, 73), Size = UDim2.new(1, -12, 1, -157),
     CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
     ScrollBarThickness = 4, BackgroundTransparency = 1, BorderSizePixel = 0,
 })
@@ -441,6 +441,7 @@ local collectionStatus = make("TextLabel", eggsPanel, {
 round(collectionStatus, 6)
 
 local auto = false
+local selectedZone = 1
 local autoButton = make("TextButton", eggsPanel, {
     Position = UDim2.new(0, 7, 1, -81), Size = UDim2.new(1, -14, 0, 29),
     BackgroundColor3 = Color3.fromRGB(157, 31, 40), TextColor3 = Color3.fromRGB(255, 237, 234),
@@ -542,14 +543,14 @@ local function hasLabel(object, expected)
     return false
 end
 
-local function findFace(scope, text, prado)
+local function findFace(scope, text, zoneNumber)
     if not scope then return end
     local found
     for _, object in ipairs(scope:GetDescendants()) do
         if object.Name == "Face" and object:IsA("GuiButton") and visibleControl(object)
             and hasLabel(object, text) then
             local card = object.Parent and object.Parent.Parent
-            if not prado or (card and hasLabel(card, "PRADO")) then
+            if not zoneNumber or (card and hasLabel(card, tostring(zoneNumber))) then
                 if found then return end
                 found = object
             end
@@ -574,7 +575,21 @@ local function signalFace(face, input, clicks)
     return ok, ok and nil or tostring(err)
 end
 
-local function launchPrado(character, root, input, clicks, allowed)
+local function nearestEggZone(position)
+    local folder = workspace:FindFirstChild("Eggs")
+    local nearest, distance
+    for _, egg in ipairs(folder and folder:GetChildren() or {}) do
+        local zoneNumber = tonumber(egg:GetAttribute("Zone"))
+        local point = egg:IsA("BasePart") and egg.Position or (egg:IsA("Model") and egg:GetPivot().Position)
+        if zoneNumber and point then
+            local gap = horizontalDistance(position, point)
+            if not distance or gap < distance then nearest, distance = zoneNumber, gap end
+        end
+    end
+    return nearest, distance
+end
+
+local function launchZone(character, root, input, clicks, allowed, zoneNumber)
     local hud = guiParent:FindFirstChild("HUD")
     local map = workspace:FindFirstChild("Map")
     local base = map and map:FindFirstChild("Base")
@@ -585,22 +600,22 @@ local function launchPrado(character, root, input, clicks, allowed)
         return math.abs(point.X) <= zone.Size.X/2 + 1 and math.abs(point.Z) <= zone.Size.Z/2 + 1
             and math.abs(point.Y) < 12
     end
-    local function control(scopeName, label, prado)
+    local function control(scopeName, label, area)
         return waitFor(root, 4, function()
-            return findFace(hud and hud:FindFirstChild(scopeName, true), label, prado)
+            return findFace(hud and hud:FindFirstChild(scopeName, true), label, area)
         end)
     end
-    local function step(scopeName, label, prado)
-        collectionStatus.Text = "Prado · " .. label
-        local face = control(scopeName, label, prado)
+    local function step(scopeName, label, area)
+        collectionStatus.Text = "Área " .. zoneNumber .. " · " .. label
+        local face = control(scopeName, label, area)
         if allowed and not allowed() then return false, "Ciclo desligado." end
-        if not face then return false, "Botão " .. label .. " não encontrado." end
+        if not face then return false, "Área " .. zoneNumber .. ": " .. label .. " indisponível ou bloqueado." end
         local ok, reason = signalFace(face, input, clicks)
         if not ok then return false, label .. ": " .. reason end
         return true
     end
 
-    local visibleCard = findFace(hud and hud:FindFirstChild("Panel", true), "IR!", true)
+    local visibleCard = findFace(hud and hud:FindFirstChild("Panel", true), "IR!", zoneNumber)
     if not visibleCard then
         if not inThrowZone() then
             local ok, reason = step("TopNav", "Lançar")
@@ -611,18 +626,19 @@ local function launchPrado(character, root, input, clicks, allowed)
         if not ok then return false, reason end
     end
     local before = root.Position
-    local ok, reason = step("Panel", "IR!", true)
+    local ok, reason = step("Panel", "IR!", zoneNumber)
     if not ok then return false, reason end
 
-    collectionStatus.Text = "Aguardando chegada ao Prado..."
+    collectionStatus.Text = "Aguardando chegada à Área " .. zoneNumber .. "..."
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local arrived = waitFor(root, 10, function()
         if player.Character ~= character then return end
         local current = root.Position
-        return current.Z <= -50 and current.Z >= -330 and before.Z - current.Z >= 55
+        local nearby, distance = nearestEggZone(current)
+        return horizontalDistance(before, current) >= 55 and nearby == zoneNumber and distance <= 230
             and humanoid and humanoid.FloorMaterial ~= Enum.Material.Air
     end)
-    if not arrived then return false, "IR!: pouso no Prado não confirmado." end
+    if not arrived then return false, "IR!: chegada à Área " .. zoneNumber .. " não confirmada." end
     if allowed and not allowed() then return false, "Ciclo desligado." end
     local invite = guiParent:FindFirstChild("FightUI")
     invite = invite and invite:FindFirstChild("FightInvite")
@@ -645,7 +661,8 @@ local function collectEgg(egg, input, clicks, fromAuto)
     local heldPrompt
     local ok, message, finished, eggName = pcall(function()
         local eggs = workspace:FindFirstChild("Eggs")
-        if not eggs or egg.Parent ~= eggs or tonumber(egg:GetAttribute("Zone")) ~= 1 then
+        local zoneNumber = tonumber(egg:GetAttribute("Zone"))
+        if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or zoneNumber > 12 then
             return "Ovo indisponível. Escolha outro."
         end
         local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -656,8 +673,10 @@ local function collectEgg(egg, input, clicks, fromAuto)
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local target = promptPosition(prompt)
         if not root or not target then return "Personagem ou ovo indisponível." end
-        if root.Position.Z > -50 and (root.Position - target).Magnitude > prompt.MaxActivationDistance then
-            local launched, reason = launchPrado(character, root, input, clicks, allowed)
+        local nearby, distance = nearestEggZone(root.Position)
+        if (root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230)
+            and (root.Position - target).Magnitude > prompt.MaxActivationDistance then
+            local launched, reason = launchZone(character, root, input, clicks, allowed, zoneNumber)
             if not launched then return reason end
             if not allowed() or player.Character ~= character or not root.Parent
                 or not prompt:IsDescendantOf(egg) or not prompt.Enabled then
@@ -771,11 +790,12 @@ end
 local lastSignature
 local function refreshEggs()
     local rows = {}
+    local zoneNumber = selectedZone
     local eggs = workspace:FindFirstChild("Eggs")
     local rarityNames = { [1] = "Comum", [2] = "Raro", [3] = "Épico", [4] = "Lendário" }
     for _, object in ipairs(eggs and eggs:GetChildren() or {}) do
         local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if tonumber(object:GetAttribute("Zone")) == 1 and prompt and prompt.Enabled then
+        if tonumber(object:GetAttribute("Zone")) == zoneNumber and prompt and prompt.Enabled then
             local value = field(object, { "EggRarity", "Rarity" })
             local numeric = tonumber(value)
             local rarity = numeric and (rarityNames[numeric] or ("Raridade " .. numeric))
@@ -804,16 +824,16 @@ local function refreshEggs()
         local row = rows[index]
         keys[index] = row.name .. "|" .. row.rarity .. "|" .. row.image .. "|" .. row.location
     end
-    local signature = #rows .. ":" .. table.concat(keys, "\n")
+    local signature = zoneNumber .. ":" .. #rows .. ":" .. table.concat(keys, "\n")
     if lastSignature == signature then return end
     lastSignature = signature
     for _, item in ipairs(list:GetChildren()) do
         if not item:IsA("UIListLayout") then item:Destroy() end
     end
-    eggsTitle.Text = "OVOS · ÁREA 1 (" .. #rows .. ")"
+    eggsTitle.Text = "OVOS · ÁREA " .. zoneNumber .. " (" .. #rows .. ")"
     if #rows == 0 then
         make("TextLabel", list, {
-            Text = "Nenhum ovo da Área 1 identificado no cliente.", Size = UDim2.new(1, -4, 0, 62),
+            Text = "Nenhum ovo desta área carregado.", Size = UDim2.new(1, -4, 0, 62),
             BackgroundTransparency = 1, TextWrapped = true, TextSize = 12,
             TextColor3 = Color3.fromRGB(198, 211, 231), Font = Enum.Font.Gotham,
         })
@@ -995,6 +1015,28 @@ local function performPlacement(character, root, pen, name, previousTools, previ
             if not distance or delta.Magnitude < distance then nearest, distance = delta, delta.Magnitude end
         end
     end
+    -- Cercado vazio: procure um piso pertencente ao lote, na direção da entrada.
+    if not nearest and pen.Parent then
+        local plot = pen.Parent
+        local forward = root.CFrame.LookVector
+        forward = Vector3.new(forward.X, 0, forward.Z)
+        local ray = RaycastParams.new()
+        ray.FilterType = Enum.RaycastFilterType.Exclude
+        ray.FilterDescendantsInstances = { character }
+        ray.RespectCanCollide = true
+        if forward.Magnitude > 0.1 then
+            for _, step in ipairs({ 12, 9, 6 }) do
+                local delta = forward.Unit * step
+                local point = root.Position + delta
+                local floor = workspace:Raycast(point + Vector3.new(0, 3, 0), Vector3.new(0, -12, 0), ray)
+                if floor and floor.Instance:IsDescendantOf(plot) and floor.Normal.Y >= 0.65
+                    and not workspace:Raycast(root.Position, delta, ray) then
+                    nearest, distance = delta, step
+                    break
+                end
+            end
+        end
+    end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local pending = "Interior do cercado não confirmado"
     local function eligible()
@@ -1063,7 +1105,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
 
     if not eligible() then return false, "Ciclo interrompido." end
     collectionStatus.Text = pending .. ". Coloque manualmente para retomar."
-    warn("[Colocação V15] " .. pending)
+    warn("[Colocação V16] " .. pending)
     while gui.Parent and auto and root.Parent and ownPen() == pen do
         if placed() then return true end
         task.wait(0.2)
@@ -1128,12 +1170,12 @@ local function hatchReady(root, pen, input, clicks)
     return false, "Ciclo interrompido."
 end
 
-local function bestEgg(root)
+local function bestEgg(root, zoneNumber)
     local folder = workspace:FindFirstChild("Eggs")
     local selected, rank, distance
     for _, egg in ipairs(folder and folder:GetChildren() or {}) do
         local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if tonumber(egg:GetAttribute("Zone")) == 1 and prompt and prompt.Enabled then
+        if tonumber(egg:GetAttribute("Zone")) == zoneNumber and prompt and prompt.Enabled then
             local position = promptPosition(prompt)
             local rarity = tonumber(egg:GetAttribute("EggRarity") or egg:GetAttribute("Rarity")) or 0
             local d = position and (position - root.Position).Magnitude
@@ -1149,6 +1191,7 @@ local looping = false
 autoButton.Activated:Connect(function(input, clicks)
     if auto then setAuto(false); collectionStatus.Text = "Desligando ciclo..."; return end
     if looping or collecting or carryingEgg() then return end
+    local zoneNumber = selectedZone
     setAuto(true)
     looping = true
     task.spawn(function()
@@ -1157,14 +1200,16 @@ autoButton.Activated:Connect(function(input, clicks)
                 local character = player.Character
                 local root = character and character:FindFirstChild("HumanoidRootPart")
                 if not root then return "Personagem indisponível." end
-                if root.Position.Z > -50 then
-                    local launched, problem = launchPrado(character, root, input, clicks, function() return auto and gui.Parent end)
+                local nearby, distance = nearestEggZone(root.Position)
+                if root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230 then
+                    local launched, problem = launchZone(character, root, input, clicks,
+                        function() return auto and gui.Parent end, zoneNumber)
                     if not launched then return problem end
                 end
                 if not gui.Parent or not auto then return "Ciclo desligado." end
-                local egg = waitFor(root, 8, function() return not auto or bestEgg(root) end)
+                local egg = waitFor(root, 8, function() return not auto or bestEgg(root, zoneNumber) end)
                 if not auto then return "Ciclo desligado." end
-                if not egg then return "Nenhum ovo disponível no Prado." end
+                if not egg then return "Nenhum ovo disponível na Área " .. zoneNumber .. "." end
                 local previousSlots = hotbarSnapshot()
                 local previousTools = {}
                 for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack") }) do
@@ -1179,7 +1224,9 @@ autoButton.Activated:Connect(function(input, clicks)
                 local placed, problem = placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
                 if not placed then return problem end
                 local hatched, hatchProblem = hatchReady(root, pen, input, clicks)
-                if not hatched then return hatchProblem end
+                if not hatched and auto then
+                    warn("[Eclosão] " .. tostring(hatchProblem) .. " · coleta continua")
+                end
                 task.wait(0.7)
             end
             return "Ciclo desligado."
@@ -1189,6 +1236,92 @@ autoButton.Activated:Connect(function(input, clicks)
             setAuto(false)
             collectionStatus.Text = ok and reason or "Erro no ciclo. Veja o console."
         end
-        if not ok then warn("[Auto Coletar V15] " .. tostring(reason)) end
+        if not ok then warn("[Auto Coletar V16] " .. tostring(reason)) end
     end)
 end)
+
+
+local function arcadeButton(parent, caption, position, size)
+    local button = make("TextButton", parent, {
+        Position = position, Size = size, Text = caption, TextSize = 12,
+        Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(242, 250, 255),
+        BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
+        TextWrapped = true,
+    })
+    round(button, 6)
+    return button
+end
+
+local previousArea = arcadeButton(eggsPanel, "‹", UDim2.fromOffset(7, 39), UDim2.fromOffset(29, 27))
+local nextArea = arcadeButton(eggsPanel, "›", UDim2.new(1, -36, 0, 39), UDim2.fromOffset(29, 27))
+local areaLabel = make("TextLabel", eggsPanel, {
+    Position = UDim2.fromOffset(38, 39), Size = UDim2.new(1, -76, 0, 27),
+    Text = "ÁREA 01 / 12", BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(242, 250, 255),
+    Font = Enum.Font.GothamBold, TextSize = 12,
+})
+local function chooseArea(delta)
+    if auto or collecting then
+        collectionStatus.Text = "Desligue o ciclo antes de trocar de área."
+        return
+    end
+    selectedZone = (selectedZone - 1 + delta) % 12 + 1
+    areaLabel.Text = string.format("ÁREA %02d / 12", selectedZone)
+    list.CanvasPosition = Vector2.zero
+    refreshEggs()
+end
+previousArea.Activated:Connect(function() chooseArea(-1) end)
+nextArea.Activated:Connect(function() chooseArea(1) end)
+
+local palettes = {
+    { "Neon", Color3.fromRGB(15, 15, 31), Color3.fromRGB(35, 31, 65), Color3.fromRGB(90, 57, 169), Color3.fromRGB(124, 232, 255) },
+    { "Crimson", Color3.fromRGB(29, 12, 18), Color3.fromRGB(56, 22, 35), Color3.fromRGB(149, 40, 63), Color3.fromRGB(255, 118, 108) },
+    { "Menta", Color3.fromRGB(12, 27, 25), Color3.fromRGB(25, 57, 49), Color3.fromRGB(28, 113, 93), Color3.fromRGB(101, 245, 194) },
+    { "Âmbar", Color3.fromRGB(33, 22, 13), Color3.fromRGB(63, 43, 28), Color3.fromRGB(141, 82, 26), Color3.fromRGB(255, 204, 107) },
+}
+local themeIndex = 1
+local theme = arcadeButton(panel, "Tema · Neon", UDim2.fromOffset(8, 151), UDim2.new(1, -16, 0, 27))
+local mainScale = make("UIScale", panel, { Scale = 1 })
+local eggScale = make("UIScale", eggsPanel, { Scale = 1 })
+local sizes = {}
+for index, option in ipairs({
+    { "Painel −", mainScale, -0.1 }, { "Painel +", mainScale, 0.1 },
+    { "Ovos −", eggScale, -0.1 }, { "Ovos +", eggScale, 0.1 },
+}) do
+    local control = arcadeButton(panel, option[1], UDim2.new((index - 1) * .25, 5, 0, 183), UDim2.new(.25, -10, 0, 27))
+    sizes[index] = control
+    control.Activated:Connect(function()
+        option[2].Scale = math.clamp(option[2].Scale + option[3], 0.65, 1.25)
+        control.Text = option[1] .. " " .. math.floor(option[2].Scale * 100 + .5) .. "%"
+    end)
+end
+minimize.Activated:Connect(function()
+    theme.Visible = not collapsed
+    for _, control in ipairs(sizes) do control.Visible = not collapsed end
+end)
+
+local function paint(object)
+    local palette = palettes[themeIndex]
+    if object == panel or object == eggsPanel then
+        object.BackgroundColor3 = palette[2]
+    elseif object:IsA("UIStroke") then
+        object.Color = palette[5]
+    elseif object:IsA("UIGradient") then
+        object.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(201, 201, 223))
+    elseif object:IsA("TextButton") then
+        object.BackgroundColor3 = palette[4]
+    elseif object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
+        object.BackgroundColor3 = palette[3]
+    elseif object == title or object == eggsTitle or object == areaLabel then
+        object.TextColor3 = palette[5]
+    end
+end
+local function repaint()
+    theme.Text = "Tema · " .. palettes[themeIndex][1]
+    for _, object in ipairs(gui:GetDescendants()) do paint(object) end
+end
+theme.Activated:Connect(function()
+    themeIndex = themeIndex % #palettes + 1
+    repaint()
+end)
+gui.DescendantAdded:Connect(paint)
+repaint()
