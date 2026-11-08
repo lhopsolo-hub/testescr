@@ -16,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS · V3 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DO BOSS · V4 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
@@ -88,7 +88,14 @@ local function walls(position)
 end
 local watched={}
 local function track(part)
-    if part:IsA("BasePart") then watched[part]=true end
+    if not part:IsA("BasePart") then return end
+    local container=part
+    while container.Parent and container.Parent~=workspace do container=container.Parent end
+    local name=container.Name
+    if name~="Scenery" and name~="Eggs" and name~="CarriedEggs"
+        and name~="CarryWalls" and container~=player.Character then
+        watched[part]=true
+    end
 end
 local function fxFolder(object)
     local path=object:GetFullName():lower()
@@ -165,10 +172,10 @@ end)
 local function finish()
     done=true
     for _,connection in ipairs(connections) do connection:Disconnect() end
-    for _,row in ipairs(fx) do table.insert(lines,row) end
-    table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS · V3 | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · V4 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
+    table.insert(report,"=== EFEITOS · mesmos horários acima ===")
+    for _,row in ipairs(fx) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
     output.Text=text
@@ -214,7 +221,7 @@ task.spawn(function()
                         local c,size=part.Color,part.Size
                         local thin=math.min(size.X,size.Y,size.Z)
                         local span=math.max(size.X,size.Y,size.Z)
-                        local red=c.R>.38 and c.R>c.G*1.20 and c.R>c.B*1.20
+                        local red=c.R>.45 and c.R>c.G*1.45 and c.R>c.B*1.45
                         if red and part.Transparency<.99 and span>=3 and (part.Position-r.Position).Magnitude<160+span/2 then
                             local prior=seen[part]
                             if not prior or (now-prior.t>=.10 and ((part.Position-prior.pos).Magnitude>=2
@@ -230,7 +237,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS · V3 · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V4 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
         task.wait(.035)
     end
