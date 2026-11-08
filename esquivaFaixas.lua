@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V19", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V20", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -46,14 +46,6 @@ local toggle = control("TextButton", "Ligar esquiva", 92, 29)
 local eggsToggle = control("TextButton", "Lista de ovos", 124, 21)
 round(toggle, 7)
 round(eggsToggle, 6)
-local collapsed = false
-minimize.Activated:Connect(function()
-    collapsed = not collapsed
-    status.Visible, toggle.Visible, eggsToggle.Visible = not collapsed, not collapsed, not collapsed
-    panel.Size = UDim2.new(0.49, 0, 0, collapsed and 40 or 220)
-    minimize.Text = collapsed and "+" or "−"
-end)
-
 local LINGER = 0.35
 local LOOKAHEAD = { 0.06, 0.12, 0.18, 0.24, 0.30, 0.36, 0.44, 0.52 }
 local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 8
@@ -76,7 +68,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V19] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V20] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -260,13 +252,17 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
     end
 end
 
+local function hasEgg(value)
+    return value == true or (tonumber(value) or 0) > 0
+end
+
 local function startFight()
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local hp = player:GetAttribute("BossHP")
     local carrying = player:GetAttribute("Carrying")
-    if (carrying ~= 1 and carrying ~= true) or not root or not humanoid or humanoid.Health <= 0 or type(hp) ~= "number" or hp < 0 then
+    if not hasEgg(carrying) or not root or not humanoid or humanoid.Health <= 0 or type(hp) ~= "number" or hp < 0 then
         status.Text = "Ligada · aguardando ovo na mão"
         return
     end
@@ -296,7 +292,7 @@ local function startFight()
             while gui.Parent and active == session do
                 local now = os.clock()
                 local carryingNow = player:GetAttribute("Carrying")
-                if (carryingNow ~= 1 and carryingNow ~= true) or session.interrupted or player.Character ~= character or not root.Parent or humanoid.Health <= 0 then
+                if not hasEgg(carryingNow) or session.interrupted or player.Character ~= character or not root.Parent or humanoid.Health <= 0 then
                     finish(session, "Luta encerrada")
                     return
                 end
@@ -464,6 +460,7 @@ local collectionStatus = make("TextLabel", eggsPanel, {
 round(collectionStatus, 6)
 
 local auto = false
+local autoDeposit, autoHatch = true, true
 local selectedZone = 1
 local autoButton = make("TextButton", eggsPanel, {
     Position = UDim2.new(0, 7, 1, -81), Size = UDim2.new(1, -14, 0, 29),
@@ -510,12 +507,10 @@ local function stylePanel(frame, handle)
     end)
     gui.Destroying:Connect(function() move:Disconnect(); ended:Disconnect() end)
 end
-stylePanel(panel, title)
-stylePanel(eggsPanel, eggsTitle)
 
 local function carryingEgg()
     local value = player:GetAttribute("Carrying")
-    return value == 1 or value == true
+    return hasEgg(value)
 end
 
 local collecting = false
@@ -1169,7 +1164,7 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
 end
 
 local function hatchReady(root, pen, input, clicks)
-    while gui.Parent and auto and ownPen() == pen and root.Parent do
+    while gui.Parent and auto and autoHatch and ownPen() == pen and root.Parent do
         local canHatch = false
         for _, egg in ipairs(pen:GetChildren()) do
             local prompt = egg:FindFirstChild("HatchPrompt", true)
@@ -1248,24 +1243,26 @@ autoButton.Activated:Connect(function(input, clicks)
             if not auto then return false, "Ciclo desligado" end
             local pen = ownPen()
             local deposited, problem
-            if pen then
-                local ran, result, message = pcall(placeInPen, character, root, pen, name,
-                    previousTools, previousSlots, input, clicks)
-                deposited = ran and result
-                problem = ran and message or tostring(result)
-            else
-                problem = "Seu cercado não foi encontrado"
+            if autoDeposit then
+                if pen then
+                    local ran, result, message = pcall(placeInPen, character, root, pen, name,
+                        previousTools, previousSlots, input, clicks)
+                    deposited = ran and result
+                    problem = ran and message or tostring(result)
+                else
+                    problem = "Seu cercado não foi encontrado"
+                end
+                if not deposited then
+                    depositsSkipped = depositsSkipped + 1
+                    warn("[Colocação V20] " .. tostring(problem) .. " · coleta continua")
+                end
             end
-            if not deposited then
-                depositsSkipped = depositsSkipped + 1
-                warn("[Colocação V19] " .. tostring(problem) .. " · coleta continua")
-                return true, "Colocação não confirmada · seguindo"
-            end
-            if auto and pen then
+            if auto and autoHatch and pen then
                 local ran, hatched, hatchProblem = pcall(hatchReady, root, pen, input, clicks)
                 if not ran or not hatched then warn("[Eclosão] " .. tostring(ran and hatchProblem or hatched)) end
             end
-            return true, "Ovo colocado · próxima rodada"
+            if not autoDeposit then return true, "Depósito desligado · próxima rodada" end
+            return true, deposited and "Ovo colocado · próxima rodada" or "Depósito não confirmado · seguindo"
         end
         while gui.Parent and auto do
             local ok, success, reason = pcall(runRound)
@@ -1277,7 +1274,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V19] " .. detail) end
+                if not ok then warn("[Auto Coletar V20] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1330,30 +1327,123 @@ local palettes = {
     { "Menta", Color3.fromRGB(12, 27, 25), Color3.fromRGB(25, 57, 49), Color3.fromRGB(28, 113, 93), Color3.fromRGB(101, 245, 194) },
     { "Âmbar", Color3.fromRGB(33, 22, 13), Color3.fromRGB(63, 43, 28), Color3.fromRGB(141, 82, 26), Color3.fromRGB(255, 204, 107) },
 }
-local themeIndex = 1
-local theme = arcadeButton(panel, "Tema · Neon", UDim2.fromOffset(8, 151), UDim2.new(1, -16, 0, 27))
-local mainScale = make("UIScale", panel, { Scale = 1 })
-local eggScale = make("UIScale", eggsPanel, { Scale = 1 })
-local sizes = {}
-for index, option in ipairs({
-    { "Painel −", mainScale, -0.1 }, { "Painel +", mainScale, 0.1 },
-    { "Ovos −", eggScale, -0.1 }, { "Ovos +", eggScale, 0.1 },
-}) do
-    local control = arcadeButton(panel, option[1], UDim2.new((index - 1) * .25, 5, 0, 183), UDim2.new(.25, -10, 0, 27))
-    sizes[index] = control
-    control.Activated:Connect(function()
-        option[2].Scale = math.clamp(option[2].Scale + option[3], 0.65, 1.25)
-        control.Text = option[1] .. " " .. math.floor(option[2].Scale * 100 + .5) .. "%"
-    end)
+local shell = make("Frame", gui, {
+    Position = UDim2.fromOffset(12, 12), Size = UDim2.new(.92, 0, .83, 0),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0, ClipsDescendants = true,
+})
+round(shell, 12)
+make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
+local header = make("TextLabel", shell, {
+    Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
+    Text = "CENTRAL DE OVOS · V20", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
+    BackgroundTransparency = 1,
+})
+local shrink = arcadeButton(shell, "−", UDim2.new(1, -38, 0, 6), UDim2.fromOffset(31, 28))
+local nav = make("Frame", shell, {
+    Position = UDim2.fromOffset(8, 44), Size = UDim2.new(.26, -10, 1, -52),
+    BackgroundColor3 = Color3.fromRGB(35, 31, 65), BorderSizePixel = 0,
+})
+round(nav, 8)
+local content = make("Frame", shell, {
+    Position = UDim2.new(.26, 4, 0, 44), Size = UDim2.new(.74, -12, 1, -52),
+    BackgroundTransparency = 1,
+})
+local function asPage(page)
+    local limit = page:FindFirstChildOfClass("UISizeConstraint")
+    if limit then limit:Destroy() end
+    page.AnchorPoint = Vector2.zero
+    page.Position = UDim2.fromOffset(0, 0)
+    page.Size = UDim2.fromScale(1, 1)
+    page.Parent = content
 end
-minimize.Activated:Connect(function()
-    theme.Visible = not collapsed
-    for _, control in ipairs(sizes) do control.Visible = not collapsed end
+asPage(panel)
+asPage(eggsPanel)
+minimize:Destroy()
+eggsToggle:Destroy()
+hideEggs:Destroy()
+title.Text = "Esquiva"
+eggsTitle.Text = "Coleta e ovos"
+
+local function settingsPage(heading, description)
+    local page = make("Frame", content, {
+        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0,
+    })
+    round(page, 8)
+    make("TextLabel", page, {
+        Position = UDim2.fromOffset(12, 7), Size = UDim2.new(1, -24, 0, 28),
+        Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(224, 241, 255),
+        TextSize = 16, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    if description then
+        make("TextLabel", page, {
+            Position = UDim2.fromOffset(12, 45), Size = UDim2.new(1, -24, 0, 56),
+            Text = description, TextWrapped = true, BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(219, 231, 249), TextSize = 13,
+            Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
+        })
+    end
+    return page
+end
+
+local penPage = settingsPage("Colocação", "Depois do retorno à base, tenta colocar o ovo coletado no seu cercado.")
+local hatchPage = settingsPage("Eclosão", "Entre rodadas, tenta chocar os ovos prontos que estiverem ao alcance no seu cercado.")
+local looksPage = settingsPage("Aparência", "Arraste pelo título para mover a central.")
+local penToggle = arcadeButton(penPage, "Auto Colocar · ON", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
+local hatchToggle = arcadeButton(hatchPage, "Auto Chocar · ON", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
+penToggle.Activated:Connect(function()
+    autoDeposit = not autoDeposit
+    penToggle.Text = autoDeposit and "Auto Colocar · ON" or "Auto Colocar · OFF"
 end)
+hatchToggle.Activated:Connect(function()
+    autoHatch = not autoHatch
+    hatchToggle.Text = autoHatch and "Auto Chocar · ON" or "Auto Chocar · OFF"
+end)
+
+local themeIndex = 1
+local theme = arcadeButton(looksPage, "Tema · Neon", UDim2.fromOffset(12, 105), UDim2.new(1, -24, 0, 29))
+local scale = make("UIScale", shell, { Scale = 1 })
+local smaller = arcadeButton(looksPage, "Tamanho −", UDim2.fromOffset(12, 144), UDim2.new(.5, -16, 0, 29))
+local larger = arcadeButton(looksPage, "Tamanho +", UDim2.new(.5, 4, 0, 144), UDim2.new(.5, -16, 0, 29))
+local function resize(amount)
+    scale.Scale = math.clamp(scale.Scale + amount, .65, 1.20)
+    larger.Text = string.format("Tamanho + · %d%%", math.floor(scale.Scale * 100 + .5))
+end
+smaller.Activated:Connect(function() resize(-.1) end)
+larger.Activated:Connect(function() resize(.1) end)
+
+local pages = {
+    { "Coleta", eggsPanel }, { "Colocar", penPage }, { "Chocar", hatchPage },
+    { "Esquiva", panel }, { "Visual", looksPage },
+}
+local selectedPage = 1
+local function showPage(index)
+    selectedPage = index
+    for i, entry in ipairs(pages) do
+        entry[2].Visible = i == index
+        entry[3].Text = (i == index and "›  " or "") .. entry[1]
+    end
+    if index == 1 then refreshEggs() end
+end
+for index, entry in ipairs(pages) do
+    local button = arcadeButton(nav, entry[1], UDim2.new(0, 5, (index - 1) / #pages, 4),
+        UDim2.new(1, -10, 1 / #pages, -8))
+    entry[3] = button
+    button.Activated:Connect(function() showPage(index) end)
+end
+local compact = false
+shrink.Activated:Connect(function()
+    compact = not compact
+    nav.Visible, content.Visible = not compact, not compact
+    shell.Size = compact and UDim2.new(.54, 0, 0, 42) or UDim2.new(.92, 0, .83, 0)
+    shrink.Text = compact and "+" or "−"
+end)
+stylePanel(shell, header)
 
 local function paint(object)
     local palette = palettes[themeIndex]
-    if object == panel or object == eggsPanel then
+    if object == shell or object == panel or object == eggsPanel or object == penPage
+        or object == hatchPage or object == looksPage then
         object.BackgroundColor3 = palette[2]
     elseif object:IsA("UIStroke") then
         object.Color = palette[5]
@@ -1361,9 +1451,9 @@ local function paint(object)
         object.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(201, 201, 223))
     elseif object:IsA("TextButton") then
         object.BackgroundColor3 = palette[4]
-    elseif object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
+    elseif object == nav or object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
         object.BackgroundColor3 = palette[3]
-    elseif object == title or object == eggsTitle or object == areaLabel then
+    elseif object == header or object == title or object == eggsTitle or object == areaLabel then
         object.TextColor3 = palette[5]
     end
 end
@@ -1376,4 +1466,5 @@ theme.Activated:Connect(function()
     repaint()
 end)
 gui.DescendantAdded:Connect(paint)
+showPage(1)
 repaint()
