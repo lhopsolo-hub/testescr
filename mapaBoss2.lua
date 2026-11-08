@@ -16,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS · V3 grupos · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DO BOSS · V4 lasers · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
@@ -40,7 +40,7 @@ copy.Activated:Connect(function()
 end)
 
 local started=os.clock()
-local lines,fx,moves,connections={},{},{},{}
+local lines,fx,moves,lasers,connections={},{},{},{},{}
 local dropped=0
 local done=false
 local carryAt, endedAt
@@ -48,6 +48,7 @@ local function vec(v) return v and string.format("%.1f,%.1f,%.1f",v.X,v.Y,v.Z) o
 local function log(kind, message)
     local rows=kind=="FX" and fx or (kind=="MOV" and moves or lines)
     local limit=kind=="FX" and 48 or (kind=="MOV" and 38 or 85)
+    if kind=="LASER FX" then rows,limit=lasers,32 end
     if #rows>=limit then dropped=dropped+1; return end
     local t=os.clock()-started
     table.insert(rows,{t=t,text=string.format("%.3fs | %s | %s",t,kind,message)})
@@ -180,8 +181,9 @@ local function finish()
     for _,connection in ipairs(connections) do connection:Disconnect() end
     for _,row in ipairs(fx) do table.insert(lines,row) end
     for _,row in ipairs(moves) do table.insert(lines,row) end
+    for _,row in ipairs(lasers) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS · V3 grupos | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · V4 lasers | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -195,6 +197,8 @@ task.spawn(function()
     local lastWall,lastMode,nextFX,nextModel=0,nil,0,0
     local nextMove,seeded=0,false
     local nextGroup=0
+    local nextLaserTitle,nextPink=0,0
+    local previousTitle
     while gui.Parent and not done do
         local now=os.clock()
         local r=root()
@@ -231,6 +235,7 @@ task.spawn(function()
             if now>=nextFX then
                 nextFX=now+.08
                 local groups={}
+                local pinkPieces={}
                 local folder=workspace:FindFirstChild("BossFX")
                 for part,state in pairs(watched) do
                     if part.Parent then
@@ -240,6 +245,15 @@ task.spawn(function()
                         local red=c.R>.45 and c.R>c.G*1.45 and c.R>c.B*1.45
                         local delta=part.Position-r.Position
                         local knownFX=fxFolder(part)
+                        local pink=c.R>=.35 and c.B>=.35 and c.G<math.min(c.R,c.B)*.85
+                        if tonumber(player:GetAttribute("Carrying"))==5 and pink and part.Transparency<.995
+                            and (knownFX or state.path:lower():find("laser",1,true))
+                            and (part.Position-r.Position).Magnitude<=65+span/2 then
+                            table.insert(pinkPieces,{distance=(part.Position-r.Position).Magnitude,
+                                text=string.format("#%d %s rgb=%d,%d,%d p=%s tam=%s rot=%s tr=%.2f",
+                                    state.id,state.path,math.floor(c.R*255+.5),math.floor(c.G*255+.5),
+                                    math.floor(c.B*255+.5),vec(part.Position),vec(size),vec(part.Orientation),part.Transparency)})
+                        end
                         local near=Vector3.new(delta.X,0,delta.Z).Magnitude<=145+span/2
                         if red and near and part.Transparency<.98 and span>=1
                             and (knownFX or (thin<=2 and math.abs(delta.Y)<=16))
@@ -262,6 +276,35 @@ task.spawn(function()
                         end
                     else watched[part]=nil end
                 end
+                if #pinkPieces>0 and now>=nextPink then
+                    nextPink=now+.65
+                    table.sort(pinkPieces,function(a,b) return a.distance<b.distance end)
+                    local sample={}
+                    for i=1,math.min(2,#pinkPieces) do sample[i]=pinkPieces[i].text end
+                    log("LASER FX",string.format("n=%d jogador=%s | %s",#pinkPieces,vec(r.Position),table.concat(sample,"; ")))
+                end
+                if tonumber(player:GetAttribute("Carrying"))==5 and now>=nextLaserTitle then
+                    nextLaserTitle=now+.2
+                    local map=workspace:FindFirstChild("Map")
+                    local zones=map and map:FindFirstChild("Zones")
+                    local zone=zones and zones:FindFirstChild("Zone5")
+                    local boss=zone and zone:FindFirstChild("Boss")
+                    local title
+                    for _,source in ipairs({playerGui,boss}) do
+                        for _,label in ipairs(source:GetDescendants()) do
+                            if label:IsA("TextLabel") and label.Visible
+                                and label.Text:lower():find("lasers cruzados",1,true) then
+                                title=label:GetFullName()
+                                break
+                            end
+                        end
+                        if title then break end
+                    end
+                    if title~=previousTitle then
+                        log("LASER AVISO",title or "aviso saiu da tela")
+                        previousTitle=title
+                    end
+                end
                 local summaries={}
                 for key,group in pairs(groups) do
                     table.insert(summaries,string.format("%s n=%d X[%.0f,%.0f] Z[%.0f,%.0f] prox=%.1f p=%s tam=%s rot=%s",
@@ -281,7 +324,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS · V3 grupos · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V4 lasers · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
         task.wait(.08)
     end
