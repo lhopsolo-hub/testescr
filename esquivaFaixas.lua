@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V35", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V36", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V35] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V36] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -293,6 +293,36 @@ local function crossesPortal(origin, target, warnings, margin)
     return false
 end
 
+local function outsideCircleTarget(root, circles, warnings, bounds, ray)
+    local best, bestDistance
+    for _, circle in ipairs(circles) do
+        local center, radius = circle.center, circle.radius
+        if horizontalDistance(root.Position, center) <= radius + 5 then
+            for _, extra in ipairs({ 6, 10 }) do
+                for _, direction in ipairs(directions) do
+                    local candidate = Vector3.new(center.X, root.Position.Y, center.Z) + direction * (radius + extra)
+                    local outside = inCage(candidate, bounds, 5)
+                    for _, other in ipairs(circles) do
+                        if horizontalDistance(candidate, other.center) <= other.radius + 5 then outside = false; break end
+                    end
+                    local distance = horizontalDistance(root.Position, candidate)
+                    if outside and (not bestDistance or distance < bestDistance)
+                        and not threatened(candidate, warnings, 2) then
+                        local ground = workspace:Raycast(candidate + Vector3.new(0, 8, 0), Vector3.new(0, -25, 0), ray)
+                        if ground and ground.Normal.Y >= .65 then
+                            local point = ground.Position + Vector3.new(0, 3, 0)
+                            local overhead = workspace:Raycast(ground.Position + Vector3.new(0, .2, 0),
+                                Vector3.new(0, 5, 0), ray)
+                            if not overhead then best, bestDistance = point, distance end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
 local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar, heading, gravityCenter, cosmic)
     local origin = root.Position
     local currentFloor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
@@ -454,26 +484,7 @@ local function startFight()
                         end
                     end
                 end
-                local laserTitle, laserCircle, laserNear
-                local laserGaps = cosmic and {}
-                if cosmic then
-                    local map = workspace:FindFirstChild("Map")
-                    local zones = map and map:FindFirstChild("Zones")
-                    local zone = zones and zones:FindFirstChild("Zone5")
-                    local boss = zone and zone:FindFirstChild("Boss")
-                    if now >= (session.nextLaserTitle or 0) then
-                        session.nextLaserTitle = now + .15
-                        session.laserTitle = false
-                        for _, item in ipairs(boss and boss:GetDescendants() or {}) do
-                            if item:IsA("TextLabel") and item.Visible
-                                and item.Text:lower():find("lasers cruzados", 1, true) then
-                                session.laserTitle = true
-                                break
-                            end
-                        end
-                    end
-                    laserTitle = session.laserTitle
-                end
+                local circles = {}
                 for _, part in ipairs(session.fxParts) do
                     if part.Parent then
                         local bossFX = folder and part:IsDescendantOf(folder)
@@ -492,27 +503,17 @@ local function startFight()
                         local pink = cosmic and bossFX and part.Transparency < .98
                             and color.R > .45 and color.B > .35 and color.G < math.min(color.R, color.B) * .8
                         local span = math.max(size.X, size.Y, size.Z)
+                        local disk = cosmic and bossFX and part.Transparency < .98
+                            and (pink or color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35)
+                            and math.abs(part.Position.Y-root.Position.Y) <= 12
+                            and ((size.X <= 1 and math.abs(size.Y-size.Z) <= 2 and size.Y >= 16
+                                and math.abs(part.CFrame.RightVector.Y) >= .98)
+                                or (size.Y <= 1 and math.abs(size.X-size.Z) <= 2 and size.X >= 16
+                                    and math.abs(part.CFrame.UpVector.Y) >= .98))
+                        if disk then table.insert(circles, { center = part.Position, radius = span / 2 }) end
                         local beam = bossFX and cosmic and math.abs(span - 70) <= 2
                             and size.Y <= .65 and math.min(size.X, size.Z) <= 1
                             and math.abs(part.Position.Y - root.Position.Y) <= 8
-                        if pink and math.abs(part.Position.Y - root.Position.Y) <= 9 then
-                            local disk = (size.X <= 1 and math.abs(size.Y - size.Z) <= 2 and size.Y >= 16
-                                and math.abs(part.CFrame.RightVector.Y) >= .98)
-                                or (size.Y <= 1 and math.abs(size.X - size.Z) <= 2 and size.X >= 16
-                                    and math.abs(part.CFrame.UpVector.Y) >= .98)
-                            if disk and horizontalDistance(root.Position, part.Position) <= span / 2 + 1 then
-                                laserCircle = true
-                            elseif size.Y <= 2 and span >= 7 and math.min(size.X, size.Z) <= 2
-                                and (not beam or laserTitle) then
-                                local position = root.Position
-                                local point = part.CFrame:PointToObjectSpace(Vector3.new(position.X, part.Position.Y, position.Z))
-                                local gap = Vector2.new(math.max(0, math.abs(point.X) - size.X / 2),
-                                    math.max(0, math.abs(point.Z) - size.Z / 2)).Magnitude
-                                laserGaps[part] = gap
-                                local prior = session.laserGaps and session.laserGaps[part]
-                                if gap <= 1.5 or (gap <= 5 and prior and gap < prior - .05) then laserNear = true end
-                            end
-                        end
                         shape = shape or cosmicWarning
                         if not (pink and cosmicWarning == "circle") and (shape or beam or smallGround or isWarning(part, root.Position)) then
                             local warning = updateWarning(session.warnings[part], part, now)
@@ -530,7 +531,6 @@ local function startFight()
                         end
                     end
                 end
-                session.laserGaps = laserGaps
                 local bossPosition, nearestBoss = nil, math.huge
                 for _, boss in ipairs(session.bosses) do
                     if boss.Parent then
@@ -553,6 +553,23 @@ local function startFight()
                     end
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
+                local circleEscaped = false
+                if cosmic and insideArena and now - (session.lastCircleTeleport or -math.huge) >= .45 then
+                    ray.FilterDescendantsInstances = folder and { character, folder } or { character }
+                    local target = outsideCircleTarget(root, circles, areas, bounds, ray)
+                    if target then
+                        local distance = horizontalDistance(root.Position, target)
+                        humanoid:MoveTo(root.Position)
+                        character:PivotTo(character:GetPivot() + (target-root.Position))
+                        root.AssemblyLinearVelocity = Vector3.zero
+                        session.walking, session.runGoal, session.patrolling = false, nil, false
+                        session.lastCircleTeleport = now
+                        session.moves = session.moves + 1
+                        session.lastDistance = distance
+                        session.urgent = nil
+                        circleEscaped = true
+                    end
+                end
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
                 local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
                 local goal = session.runGoal
@@ -572,25 +589,17 @@ local function startFight()
                 end
                 urgent = gravityPart or urgent
                 if gravityCenter then danger = true end
-                local lasers = cosmic and not gravityCenter and (laserTitle or laserCircle)
                 local switchToDodge = (danger and session.patrolling) or (urgent and urgent ~= session.urgent)
                 session.urgent = urgent
                 if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
                     or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
-                    or switchToDodge or lasers or (cosmic and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
-                    if not insideArena or lasers then humanoid:MoveTo(root.Position) end
+                    or switchToDodge or (cosmic and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
+                    if not insideArena then humanoid:MoveTo(root.Position) end
                     session.walking, session.runGoal = false, nil
                 end
                 if session.walking then message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque" end
 
-                if lasers and insideArena then
-                    message = "Lasers Cruzados · aguardando barra"
-                    if laserNear and humanoid.FloorMaterial ~= Enum.Material.Air and now - lastJump >= .25 then
-                        humanoid.Jump = true
-                        lastJump = now
-                        message = "Lasers Cruzados · pulando"
-                    end
-                elseif insideArena and not session.walking and now - lastScan >= 0.04 then
+                if insideArena and not session.walking and now - lastScan >= 0.04 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
                     local delta
@@ -629,6 +638,7 @@ local function startFight()
                     lastJump = now
                 end
                 if gravityCenter and session.walking then message = "Buraco Negro · fuga radial" end
+                if circleEscaped then message = "Círculo · teleporte interno confirmado" end
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
                     hp, waves, session.hits, message, session.lastDistance)
                 task.wait(0.04)
@@ -1455,7 +1465,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V35] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V36] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1564,7 +1574,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V35] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V36] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1591,14 +1601,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V35] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V36] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V35] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V36] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1647,7 +1657,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V35] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V36] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1658,7 +1668,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V35] " .. problem) end
+                if problem then warn("[Inventário V36] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1704,7 +1714,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V35] " .. detail) end
+                if not ok then warn("[Auto Coletar V36] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1765,7 +1775,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V35", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V36", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1879,7 +1889,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V35] " .. tostring(reason or count))
+        warn("[Inventário V36] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1907,7 +1917,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V35] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V36] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1936,7 +1946,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V35] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V36] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
