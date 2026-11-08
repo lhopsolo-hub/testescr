@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(45, 94, 165), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V5", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V6", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V5] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V6] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -165,7 +165,64 @@ local function horizontalDistance(a, b)
     return Vector3.new(delta.X, 0, delta.Z).Magnitude
 end
 
-local function safeStep(root, warnings, ray, bossPosition, shortRange)
+-- As paredes de CarryWalls podem ter CanQuery=false. Use a geometria delas.
+local function cageBounds(origin)
+    local cage = workspace:FindFirstChild("CarryWalls")
+    if not cage then return end
+    local xWalls, zWalls = {}, {}
+    for _, part in ipairs(cage:GetDescendants()) do
+        if part:IsA("BasePart") and (part.Name == "Field" or part.Name == "Force")
+            and part.Size.Y >= 12 and part.Size.Z <= 1 and part.Size.X >= 8
+            and math.abs(origin.Y - part.Position.Y) <= part.Size.Y / 2 + 2 then
+            local x, z = part.Position.X, part.Position.Z
+            local right = part.CFrame.RightVector
+            if math.abs(right.Z) >= 0.99 then
+                table.insert(xWalls, { at = x, low = z - part.Size.X / 2, high = z + part.Size.X / 2 })
+            elseif math.abs(right.X) >= 0.99 then
+                table.insert(zWalls, { at = z, low = x - part.Size.X / 2, high = x + part.Size.X / 2 })
+            end
+        end
+    end
+
+    local function bracket(walls, coordinate, across)
+        local low, high
+        for _, wall in ipairs(walls) do
+            if across >= wall.low - 0.1 and across <= wall.high + 0.1 then
+                if wall.at < coordinate and (not low or wall.at > low) then low = wall.at end
+                if wall.at > coordinate and (not high or wall.at < high) then high = wall.at end
+            end
+        end
+        return low, high
+    end
+    local function covers(walls, at, low, high)
+        local spans = {}
+        for _, wall in ipairs(walls) do
+            if math.abs(wall.at - at) <= 0.15 then table.insert(spans, wall) end
+        end
+        table.sort(spans, function(a, b) return a.low < b.low end)
+        local covered = low
+        for _, span in ipairs(spans) do
+            if span.low > covered + 0.2 then break end
+            covered = math.max(covered, span.high)
+            if covered >= high - 0.2 then return true end
+        end
+        return false
+    end
+    local minX, maxX = bracket(xWalls, origin.X, origin.Z)
+    local minZ, maxZ = bracket(zWalls, origin.Z, origin.X)
+    if minX and maxX and minZ and maxZ
+        and covers(xWalls, minX, minZ, maxZ) and covers(xWalls, maxX, minZ, maxZ)
+        and covers(zWalls, minZ, minX, maxX) and covers(zWalls, maxZ, minX, maxX) then
+        return { minX = minX, maxX = maxX, minZ = minZ, maxZ = maxZ }
+    end
+end
+
+local function inCage(point, bounds, margin)
+    return bounds and point.X >= bounds.minX + margin and point.X <= bounds.maxX - margin
+        and point.Z >= bounds.minZ + margin and point.Z <= bounds.maxZ - margin
+end
+
+local function safeStep(root, warnings, ray, bossPosition, shortRange, bounds)
     local origin = root.Position
     local currentFloor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
     if not currentFloor or currentFloor.Normal.Y < 0.65 then return end
@@ -179,7 +236,8 @@ local function safeStep(root, warnings, ray, bossPosition, shortRange)
         for _, direction in ipairs(directions) do
             local candidate = origin + direction * distance
             local distanceFromBoss = bossPosition and horizontalDistance(candidate, bossPosition)
-            if (not minimumBossDistance or distanceFromBoss >= minimumBossDistance)
+            if inCage(candidate, bounds, 4)
+                and (not minimumBossDistance or distanceFromBoss >= minimumBossDistance)
                 and not threatened(candidate, warnings, EXIT_MARGIN) then
                 local floor = workspace:Raycast(candidate + Vector3.new(0, 2, 0), Vector3.new(0, -20, 0), ray)
                 if floor and floor.Normal.Y >= 0.65
@@ -205,8 +263,9 @@ local function startFight()
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local hp = player:GetAttribute("BossHP")
-    if not root or not humanoid or humanoid.Health <= 0 or type(hp) ~= "number" or hp < 0 then
-        status.Text = "Ligada · aguardando luta"
+    local carrying = player:GetAttribute("Carrying")
+    if (carrying ~= 1 and carrying ~= true) or not root or not humanoid or humanoid.Health <= 0 or type(hp) ~= "number" or hp < 0 then
+        status.Text = "Ligada · aguardando ovo na mão"
         return
     end
 
@@ -230,12 +289,22 @@ local function startFight()
 
     task.spawn(function()
         local lastMove, lastScan, lastJump = -math.huge, -math.huge, -math.huge
+        local bounds, checkedAt = nil, -math.huge
         local ok, err = pcall(function()
             while gui.Parent and active == session do
                 local now = os.clock()
-                if session.interrupted or player.Character ~= character or not root.Parent or humanoid.Health <= 0 then
+                local carryingNow = player:GetAttribute("Carrying")
+                if (carryingNow ~= 1 and carryingNow ~= true) or session.interrupted or player.Character ~= character or not root.Parent or humanoid.Health <= 0 then
                     finish(session, "Luta encerrada")
                     return
+                end
+                if now - checkedAt >= 0.25 then
+                    bounds, checkedAt = cageBounds(root.Position), now
+                end
+                local insideArena = inCage(root.Position, bounds, 0.1)
+                if not insideArena and session.walking then
+                    humanoid:MoveTo(root.Position)
+                    session.walking = false
                 end
                 local folder = workspace:FindFirstChild("BossFX")
                 if folder then
@@ -247,8 +316,9 @@ local function startFight()
                 end
                 local areas, waves = projectWarnings(session.warnings, now)
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
-                local message = danger and "Buscando saída" or "Fora das marcas"
-                if danger and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
+                local message = not insideArena and "Aguardando perímetro fechado"
+                    or (danger and "Buscando saída interna" or "Dentro da arena")
+                if insideArena and danger and now - lastMove >= 0.15 and now - lastScan >= 0.10 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
                     local bossPosition
@@ -270,7 +340,7 @@ local function startFight()
                     local immediate = threatened(root.Position, areas, TRIGGER_MARGIN, true)
                     local waiting = session.walking and not immediate and now < (session.runUntil or 0)
                     if not waiting and not immediate and waves > 0 and shortRange >= 2 and now >= (session.nextRun or 0) then
-                        short = safeStep(root, areas, ray, nil, shortRange)
+                        short = safeStep(root, areas, ray, nil, shortRange, bounds)
                     end
                     local delta
                     if short then
@@ -280,7 +350,7 @@ local function startFight()
                         session.walking = true
                         message = "Saída a pé"
                     elseif not waiting then
-                        delta = safeStep(root, areas, ray, bossPosition)
+                        delta = safeStep(root, areas, ray, bossPosition, nil, bounds)
                     end
                     if delta then
                         if session.walking then
@@ -293,10 +363,10 @@ local function startFight()
                         lastMove = now
                         message = "Saída solicitada"
                     elseif not short and not waiting then
-                        message = "Sem saída livre entre 24 e 64 studs"
+                        message = "Sem saída interna livre"
                     end
                 end
-                if now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
+                if inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
@@ -369,27 +439,6 @@ local colors = { Color3.fromRGB(197, 210, 230), Color3.fromRGB(104, 220, 144),
     Color3.fromRGB(107, 174, 255), Color3.fromRGB(195, 135, 255), Color3.fromRGB(255, 192, 83),
     Color3.fromRGB(255, 116, 150), Color3.fromRGB(129, 245, 240), Color3.fromRGB(252, 227, 125) }
 
-local function areaOne(object)
-    local node = object
-    while node and node ~= workspace do
-        local name = node.Name:lower():gsub("[%s_%-]", "")
-        local id = node:GetAttribute("AreaId") or node:GetAttribute("ZoneId")
-        if id ~= nil then return tonumber(id) == 1 end
-        if name == "area1" or name == "area01" or name == "área1" or name == "zone1" or name == "zone01" then
-            return true
-        end
-        node = node.Parent
-    end
-    return false
-end
-
-local function looksLikeEgg(object)
-    if not (object:IsA("Model") or object:IsA("BasePart")) then return false end
-    local name = object.Name:gsub("(%l)(%u)", "%1 %2"):lower()
-    return object:GetAttribute("IsEgg") == true or object:GetAttribute("EggId") ~= nil
-        or name:find("%f[%a]egg%f[%A]") ~= nil or name:find("%f[%a]ovo%f[%A]") ~= nil
-end
-
 local function field(object, names)
     for _, key in ipairs(names) do
         local value = object:GetAttribute(key)
@@ -399,42 +448,76 @@ local function field(object, names)
     end
 end
 
+local function previewEgg(icon, object)
+    local view = make("ViewportFrame", icon, {
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+        Ambient = Color3.fromRGB(170, 170, 170),
+    })
+    local model = make("Model", view, {})
+    local parts = object:GetDescendants()
+    if object:IsA("BasePart") then table.insert(parts, 1, object) end
+    local count = 0
+    for _, part in ipairs(parts) do
+        if part:IsA("BasePart") and part.Archivable and part.Transparency < 0.99 then
+            local clone = part:Clone()
+            if clone then
+                for _, child in ipairs(clone:GetChildren()) do
+                    if not (child:IsA("SpecialMesh") or child:IsA("Decal") or child:IsA("Texture")
+                        or child:IsA("SurfaceAppearance")) then child:Destroy() end
+                end
+                clone.Anchored = true
+                clone.Parent = model
+                count = count + 1
+                if count >= 70 then break end
+            end
+        end
+    end
+    if count == 0 then view:Destroy(); return end
+    local center, size = model:GetBoundingBox()
+    local distance = math.max(size.X, size.Y, size.Z) * 2.4
+    local camera = make("Camera", view, {
+        FieldOfView = 32,
+        CFrame = CFrame.lookAt(center.Position + Vector3.new(0.48, 0.25, 1).Unit * distance, center.Position),
+    })
+    view.CurrentCamera = camera
+    icon.Text = ""
+end
+
 local lastSignature
 local function refreshEggs()
     local rows = {}
-    for _, object in ipairs(workspace:GetDescendants()) do
-        if looksLikeEgg(object) and areaOne(object) then
-            local ancestor, nested = object.Parent, false
-            while ancestor and ancestor ~= workspace do
-                if looksLikeEgg(ancestor) and areaOne(ancestor) then nested = true; break end
-                ancestor = ancestor.Parent
+    local eggs = workspace:FindFirstChild("Eggs")
+    local rarityNames = { [1] = "Comum", [2] = "Raro", [3] = "Épico", [4] = "Lendário" }
+    for _, object in ipairs(eggs and eggs:GetChildren() or {}) do
+        local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if tonumber(object:GetAttribute("Zone")) == 1 and prompt and prompt.Enabled then
+            local value = field(object, { "EggRarity", "Rarity" })
+            local numeric = tonumber(value)
+            local rarity = numeric and (rarityNames[numeric] or ("Raridade " .. numeric))
+                or tostring(value or "Sem raridade")
+            local image = field(object, { "Image", "Icon", "ImageId", "IconId", "Thumbnail" })
+            if type(image) == "number" or (type(image) == "string" and image:match("^%d+$")) then
+                image = "rbxassetid://" .. tostring(image)
             end
-            if not nested then
-                local rarity = tostring(field(object, { "Rarity", "EggRarity", "Raridade", "Tier" }) or "Sem raridade")
-                local image = field(object, { "Image", "Icon", "ImageId", "IconId", "Thumbnail" })
-                if not image then
-                    local decal = object:FindFirstChildWhichIsA("Decal", true)
-                    if decal then image = decal.Texture end
-                end
-                if type(image) == "number" or (type(image) == "string" and image:match("^%d+$")) then
-                    image = "rbxassetid://" .. tostring(image)
-                end
-                if type(image) ~= "string" then image = "" end
-                local rank = order[rarity:lower()] or 0
-                table.insert(rows, { name = object.Name, rarity = rarity, rank = rank, image = image })
-            end
+            local rank = order[rarity:lower()] or 0
+            local location = object:IsA("BasePart") and object.Position
+                or (object:IsA("Model") and object:GetPivot().Position)
+            local label = prompt.ObjectText ~= "" and prompt.ObjectText or object.Name
+            table.insert(rows, { name = label, rarity = rarity, rank = rank,
+                image = type(image) == "string" and image or "",
+                location = location and tostring(location) or "", object = object })
         end
     end
     table.sort(rows, function(a, b)
         if a.rank ~= b.rank then return a.rank > b.rank end
         if a.name ~= b.name then return a.name < b.name end
         if a.rarity ~= b.rarity then return a.rarity < b.rarity end
-        return a.image < b.image
+        return a.location < b.location
     end)
     local keys = {}
     for index = 1, math.min(#rows, 60) do
         local row = rows[index]
-        keys[index] = row.name .. "|" .. row.rarity .. "|" .. row.image
+        keys[index] = row.name .. "|" .. row.rarity .. "|" .. row.image .. "|" .. row.location
     end
     local signature = #rows .. ":" .. table.concat(keys, "\n")
     if lastSignature == signature then return end
@@ -466,6 +549,8 @@ local function refreshEggs()
                 Image = row.image, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
                 ScaleType = Enum.ScaleType.Fit,
             })
+        elseif index <= 12 then
+            pcall(previewEgg, icon, row.object)
         end
         make("TextLabel", item, {
             Text = row.name .. "\n" .. row.rarity, Position = UDim2.fromOffset(44, 4),
