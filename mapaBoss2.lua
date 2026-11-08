@@ -16,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS · V2 combate · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DO BOSS · V3 grupos · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
@@ -148,12 +148,15 @@ local function motion(r)
         tostring(humanoid and humanoid.FloorMaterial~=Enum.Material.Air))
 end
 
+local lastGroups, lastGroupsAt
 local hp=player:GetAttribute("BossHP")
 listen(player:GetAttributeChangedSignal("BossHP"),function()
     local value=player:GetAttribute("BossHP")
     local r=root()
     if type(hp)=="number" and type(value)=="number" and hp>=0 and value>=0 and value<hp then
-        log("DANO",string.format("%.2f -> %.2f | %s",hp,value,motion(r)))
+        local context = lastGroupsAt and os.clock()-lastGroupsAt <= 1
+            and string.format(" | FX %.2fs atrás: %s",os.clock()-lastGroupsAt,lastGroups) or ""
+        log("DANO",string.format("%.2f -> %.2f | %s%s",hp,value,motion(r),context))
     elseif type(value)~="number" or value<0 then
         log("FIM BOSS","BossHP="..tostring(value))
     elseif type(hp)~="number" or hp<0 then
@@ -178,7 +181,7 @@ local function finish()
     for _,row in ipairs(fx) do table.insert(lines,row) end
     for _,row in ipairs(moves) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS · V2 combate | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · V3 grupos | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -191,6 +194,7 @@ if carrying() then carryAt=os.clock() end
 task.spawn(function()
     local lastWall,lastMode,nextFX,nextModel=0,nil,0,0
     local nextMove,seeded=0,false
+    local nextGroup=0
     while gui.Parent and not done do
         local now=os.clock()
         local r=root()
@@ -226,6 +230,8 @@ task.spawn(function()
             end
             if now>=nextFX then
                 nextFX=now+.08
+                local groups={}
+                local folder=workspace:FindFirstChild("BossFX")
                 for part,state in pairs(watched) do
                     if part.Parent then
                         local c,size=part.Color,part.Size
@@ -235,25 +241,47 @@ task.spawn(function()
                         local delta=part.Position-r.Position
                         local knownFX=fxFolder(part)
                         local near=Vector3.new(delta.X,0,delta.Z).Magnitude<=145+span/2
-                        if red and near and part.Transparency<.98 and span>=3
-                            and (knownFX or (thin<=2 and math.abs(delta.Y)<=16)) then
-                            local prior=state.pos
-                            if not prior or (now-state.at>=.20 and ((part.Position-prior).Magnitude>=4
-                                or (size-state.size).Magnitude>=3 or (part.Orientation-state.rot).Magnitude>=10)) then
-                                state.pos,state.size,state.rot,state.at=part.Position,size,part.Orientation,now
-                                log("FX",string.format("#%d %s %s p=%s tam=%s rot=%s tr=%.2f jog=%s",
-                                    state.id,prior and "MOVE" or "ABRE",state.path,vec(part.Position),
-                                    vec(size),vec(part.Orientation),part.Transparency,vec(r.Position)))
+                        if red and near and part.Transparency<.98 and span>=1
+                            and (knownFX or (thin<=2 and math.abs(delta.Y)<=16))
+                            and not state.path:find(".Boss.",1,true) then
+                            local key=folder and part:IsDescendantOf(folder) and part.ClassName or "Outros"
+                            local group=groups[key]
+                            if not group then
+                                group={count=0,minX=math.huge,maxX=-math.huge,minZ=math.huge,maxZ=-math.huge,
+                                    distance=math.huge}
+                                groups[key]=group
                             end
-                        elseif state.pos then
-                            state.pos=nil
+                            local position=part.Position
+                            group.count=group.count+1
+                            group.minX,group.maxX=math.min(group.minX,position.X),math.max(group.maxX,position.X)
+                            group.minZ,group.maxZ=math.min(group.minZ,position.Z),math.max(group.maxZ,position.Z)
+                            local distance=Vector3.new(delta.X,0,delta.Z).Magnitude
+                            if distance<group.distance then
+                                group.distance,group.position,group.size,group.rotation=distance,position,size,part.Orientation
+                            end
                         end
                     else watched[part]=nil end
+                end
+                local summaries={}
+                for key,group in pairs(groups) do
+                    table.insert(summaries,string.format("%s n=%d X[%.0f,%.0f] Z[%.0f,%.0f] prox=%.1f p=%s tam=%s rot=%s",
+                        key,group.count,group.minX,group.maxX,group.minZ,group.maxZ,group.distance,
+                        vec(group.position),vec(group.size),vec(group.rotation)))
+                end
+                if #summaries>0 then
+                    table.sort(summaries)
+                    lastGroups,lastGroupsAt=table.concat(summaries,"; "),now
+                    if now>=nextGroup then
+                        log("FX",lastGroups)
+                        nextGroup=now+.65
+                    end
+                else
+                    nextGroup=0
                 end
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS · V2 combate · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V3 grupos · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
         task.wait(.08)
     end
