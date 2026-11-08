@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V21", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V22", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,8 +104,20 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V21] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V22] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
+end
+
+local function desertShape(part)
+    local size = part.Size
+    if size.X <= 1 and math.abs(size.Y - 28) <= 1 and math.abs(size.Z - 28) <= 1
+        and math.abs(part.CFrame.RightVector.Y) >= 0.98 then
+        return "circle"
+    end
+    if size.Y <= 1 and math.abs(size.X - 25) <= 1 and math.abs(size.Z - 22) <= 1
+        and math.abs(part.CFrame.UpVector.Y) >= 0.98 then
+        return "rectangle"
+    end
 end
 
 local function isWarning(part, position)
@@ -178,6 +190,10 @@ local function inside(position, warning, margin)
     local center = warning.frame.Position
     local localPoint = warning.frame:PointToObjectSpace(Vector3.new(position.X, center.Y, position.Z))
     local size = warning.size
+    if warning.shape == "circle" then
+        local radius = math.max(size.Y, size.Z) / 2 + margin
+        return localPoint.Y^2 + localPoint.Z^2 <= radius^2
+    end
     return math.abs(localPoint.X) <= size.X / 2 + margin
         and math.abs(localPoint.Y) <= size.Y / 2 + margin
         and math.abs(localPoint.Z) <= size.Z / 2 + margin
@@ -303,6 +319,7 @@ local function startFight()
         return
     end
 
+    local desert = tonumber(carrying) == 2
     local session = { moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
@@ -344,7 +361,7 @@ local function startFight()
                     session.walking = false
                 end
                 local folder = workspace:FindFirstChild("BossFX")
-                if now - (session.effectsAt or -math.huge) >= 0.12 then
+                if now - (session.effectsAt or -math.huge) >= (desert and 0.04 or 0.12) then
                     session.effectsAt = now
                     session.fxParts = {}
                     session.bosses = {}
@@ -377,8 +394,19 @@ local function startFight()
                     end
                 end
                 for _, part in ipairs(session.fxParts) do
-                    if part.Parent and isWarning(part, root.Position) then
-                        session.warnings[part] = updateWarning(session.warnings[part], part, now)
+                    if part.Parent then
+                        local desertFX = desert and folder and part:IsDescendantOf(folder)
+                        local shape = desertFX and part.Transparency >= 0.60
+                            and part.Transparency < 0.98 and desertShape(part)
+                        if shape or isWarning(part, root.Position) then
+                            local warning = updateWarning(session.warnings[part], part, now)
+                            warning.shape = shape
+                            if shape then
+                                warning.static = true
+                                warning.movingUntil = 0
+                            end
+                            session.warnings[part] = warning
+                        end
                     end
                 end
                 local bossPosition, nearestBoss = nil, math.huge
@@ -391,9 +419,20 @@ local function startFight()
                         end
                     end
                 end
+                if desert then
+                    local map = workspace:FindFirstChild("Map")
+                    local zones = map and map:FindFirstChild("Zones")
+                    local zone = zones and zones:FindFirstChild("Zone2")
+                    local boss = zone and zone:FindFirstChild("Boss")
+                    local glow = boss and boss:FindFirstChild("Glow")
+                    if glow and glow:IsA("BasePart") and math.abs(glow.Position.Y-root.Position.Y)<=25 then
+                        bossPosition = glow.Position
+                        nearestBoss = horizontalDistance(root.Position, bossPosition)
+                    end
+                end
                 local areas, waves = projectWarnings(session.warnings, now)
                 local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
-                local closeBoss = nearestBoss <= 23
+                local closeBoss = nearestBoss <= (desert and 34 or 23)
                 local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
                 local goal = session.runGoal
                 if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
@@ -407,7 +446,12 @@ local function startFight()
                 if insideArena and not session.walking and (danger or closeBoss) and now - lastScan >= 0.08 then
                     lastScan = now
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    local delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, not danger)
+                    local delta
+                    if desert and danger then
+                        delta = safeStep(root, areas, ray, nil, bounds, 1.75, false)
+                    else
+                        delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, not danger)
+                    end
                     if not delta and danger then
                         delta = safeStep(root, areas, ray, nil, bounds, 2.5, false)
                     end
@@ -424,7 +468,7 @@ local function startFight()
                         message = "Sem saída interna livre a pé"
                     end
                 end
-                if inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
+                if not desert and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
@@ -1292,7 +1336,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 end
                 if not deposited then
                     depositsSkipped = depositsSkipped + 1
-                    warn("[Colocação V21] " .. tostring(problem) .. " · coleta continua")
+                    warn("[Colocação V22] " .. tostring(problem) .. " · coleta continua")
                 end
             end
             if auto and autoHatch and pen then
@@ -1312,7 +1356,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V21] " .. detail) end
+                if not ok then warn("[Auto Coletar V22] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1373,7 +1417,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V21", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V22", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
