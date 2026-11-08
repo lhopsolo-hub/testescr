@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V28", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V29", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -104,7 +104,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V28] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V29] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -1193,7 +1193,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
         end
         return false
     end
-    if humanoid and nearest and distance <= (marked and 65 or 30) and eligible() then
+    if humanoid and nearest and distance <= (marked and 120 or 30) and eligible() then
         collectionStatus.Text = marked and "Indo ao ponto salvo no celeiro..." or "Entrando no seu cercado..."
         local target = marked or (root.Position + nearest)
         local function walkTo(point, seconds, tolerance)
@@ -1258,7 +1258,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V28] Alvo a %.1f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V29] Alvo a %.1f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1359,7 +1359,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V28] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V29] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1386,14 +1386,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V28] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V29] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V28] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V29] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1422,6 +1422,7 @@ local function bestEgg(root, zoneNumber)
 end
 
 local looping = false
+local pendingDeposit
 autoButton.Activated:Connect(function(input, clicks)
     if auto then setAuto(false); collectionStatus.Text = "Desligando ciclo..."; return end
     if hatching or depositing or looping or collecting or carryingEgg() then return end
@@ -1429,12 +1430,36 @@ autoButton.Activated:Connect(function(input, clicks)
     setAuto(true)
     looping = true
     task.spawn(function()
-        local failures, depositsSkipped = 0, 0
+        local failures = 0
+        local function finishDeposit(character, root)
+            local pen = ownPen()
+            if pendingDeposit and autoDeposit then
+                if not pen then return false, "Seu cercado não foi encontrado" end
+                local item = pendingDeposit
+                local deposited, problem = placeInPen(character, root, pen, item.name,
+                    item.previousTools, item.previousSlots, input, clicks)
+                if not deposited then
+                    warn("[Colocação V29] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    return false, problem
+                end
+            end
+            pendingDeposit = nil
+            if auto and autoHatch and pen then
+                local ran, hatched, problem = pcall(hatchReady, root, pen, input, clicks)
+                if not ran or not hatched then warn("[Eclosão] " .. tostring(ran and problem or hatched)) end
+            end
+            if auto and autoDeposit and pen then
+                local _, problem = depositInventory(character, root, pen, input, clicks)
+                if problem then warn("[Inventário V29] " .. problem) end
+            end
+            return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
+        end
         local function runRound()
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not root then return false, "Aguardando personagem" end
             if carryingEgg() then return false, "Aguardando fim do transporte" end
+            if pendingDeposit then return finishDeposit(character, root) end
             local nearby, distance = nearestEggZone(root.Position)
             if root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230 then
                 local launched, problem = launchZone(character, root, input, clicks,
@@ -1454,34 +1479,12 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             local collected, name = collectEgg(egg, input, clicks, true)
             if not collected then return false, collectionStatus.Text end
+            pendingDeposit = { name = name, previousTools = previousTools, previousSlots = previousSlots }
             if not auto then return false, "Ciclo desligado" end
-            local pen = ownPen()
-            local deposited, problem
-            if autoDeposit then
-                if pen then
-                    local ran, result, message = pcall(placeInPen, character, root, pen, name,
-                        previousTools, previousSlots, input, clicks)
-                    deposited = ran and result
-                    problem = ran and message or tostring(result)
-                else
-                    problem = "Seu cercado não foi encontrado"
-                end
-                if not deposited then
-                    depositsSkipped = depositsSkipped + 1
-                    warn("[Colocação V28] " .. tostring(problem) .. " · coleta continua")
-                end
-            end
-            if auto and autoHatch and pen then
-                local ran, hatched, hatchProblem = pcall(hatchReady, root, pen, input, clicks)
-                if not ran or not hatched then warn("[Eclosão] " .. tostring(ran and hatchProblem or hatched)) end
-            end
-            if auto and autoDeposit and pen then
-                local placed, reason = depositInventory(character, root, pen, input, clicks)
-                if placed > 0 then deposited = true end
-                if reason then warn("[Inventário V28] " .. reason) end
-            end
-            if not autoDeposit then return true, "Depósito desligado · próxima rodada" end
-            return true, deposited and "Ovo colocado · próxima rodada" or "Depósito não confirmado · seguindo"
+            local returnedCharacter = player.Character
+            local returnedRoot = returnedCharacter and returnedCharacter:FindFirstChild("HumanoidRootPart")
+            if not returnedRoot then return false, "Aguardando personagem na base" end
+            return finishDeposit(returnedCharacter, returnedRoot)
         end
         while gui.Parent and auto do
             local ok, success, reason = pcall(runRound)
@@ -1493,9 +1496,9 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V28] " .. detail) end
+                if not ok then warn("[Auto Coletar V29] " .. detail) end
             end
-            autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
+            autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
             local untilTime = os.clock() + delay
             while gui.Parent and auto and os.clock() < untilTime do task.wait(0.2) end
@@ -1554,7 +1557,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V28", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V29", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1623,7 +1626,7 @@ local function settingsPage(heading, description)
     return page
 end
 
-local penPage = settingsPage("Colocação", "Entre no celeiro e coloque um ovo pelo botão para salvar o ponto desta sessão.")
+local penPage = settingsPage("Colocação", "Marque um ponto dentro do celeiro. A coleta aguarda o depósito antes de sair novamente.")
 local hatchPage = settingsPage("Eclosão", "Entre rodadas, tenta chocar os ovos prontos que estiverem ao alcance no seu cercado.")
 local looksPage = settingsPage("Aparência", "Arraste pelo título para mover a central.")
 local penToggle = arcadeButton(penPage, "Auto Colocar · ON", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
@@ -1633,6 +1636,22 @@ penToggle.Activated:Connect(function()
     penToggle.Text = autoDeposit and "Auto Colocar · ON" or "Auto Colocar · OFF"
 end)
 local depositNow = arcadeButton(penPage, "Colocar ovos do inventário", UDim2.fromOffset(12, 151), UDim2.new(1, -24, 0, 36))
+local markPen = arcadeButton(penPage, "Marcar ponto dentro do celeiro", UDim2.fromOffset(12, 193), UDim2.new(1, -24, 0, 36))
+markPen.Activated:Connect(function()
+    if looping or depositing or hatching or collecting then
+        markPen.Text = "Pare o ciclo para marcar o ponto"
+        return
+    end
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local pen = ownPen()
+    if not root or not pen or carryingEgg() then
+        markPen.Text = "Entre no seu celeiro para marcar"
+        return
+    end
+    placementPoints[pen] = root.Position
+    markPen.Text = "Ponto salvo · marcar novamente"
+end)
 depositNow.Activated:Connect(function(input, clicks)
     if depositing or hatching then return end
     if looping or collecting then
@@ -1652,7 +1671,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V28] " .. tostring(reason or count))
+        warn("[Inventário V29] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1680,7 +1699,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V28] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V29] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1709,7 +1728,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V28] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V29] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
