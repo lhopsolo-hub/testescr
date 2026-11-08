@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V14", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V15", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -76,7 +76,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V14] %s | último salto lateral %.1f studs",
+    print(string.format("[Esquiva V15] %s | último salto lateral %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -871,11 +871,18 @@ local function ownPen()
     end
 end
 
+local function eggNameKey(value)
+    if type(value) ~= "string" then return "" end
+    return value:gsub("^%s*🥚%s*", ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+end
+
 local function findEggTool(character, name, previousTools)
+    local expected = eggNameKey(name)
+    if expected == "" then return end
     local function match(container)
         local found
         for _, object in ipairs(container and container:GetChildren() or {}) do
-            if object:IsA("Tool") and not previousTools[object] and (object.Name == name or object:GetAttribute("EggName") == name) then
+            if object:IsA("Tool") and not previousTools[object] and (eggNameKey(object.Name) == expected or eggNameKey(object:GetAttribute("EggName")) == expected) then
                 if found then return nil, true end
                 found = object
             end
@@ -935,8 +942,12 @@ local function newEggSlot(previous, name)
     for index, row in ipairs(hotbarSnapshot()) do
         local before = previous[index]
         if row.button and visibleControl(row.button) and row.fingerprint ~= "" then
-            if name and name ~= "" and table.find(row.labels, name) then
-                table.insert(matched, row.button)
+            local expected = eggNameKey(name)
+            for _, label in ipairs(row.labels) do
+                if expected ~= "" and eggNameKey(label) == expected then
+                    table.insert(matched, row.button)
+                    break
+                end
             end
             if not before or before.fingerprint ~= row.fingerprint then
                 table.insert(changes, row.button)
@@ -963,9 +974,19 @@ local function worldPoint()
     end
 end
 
-local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
-    local before = tonumber(player:GetAttribute("PenEggs"))
-    if not before then return false, "Contador do cercado indisponível." end
+local function penTimes()
+    local raw = player:GetAttribute("PenEggTimes")
+    if type(raw) ~= "string" then return end
+    local ok, times = pcall(function() return game:GetService("HttpService"):JSONDecode(raw) end)
+    if not ok or type(times) ~= "table" then return end
+    local counts = {}
+    for _, timestamp in ipairs(times) do
+        if type(timestamp) == "number" then counts[timestamp] = (counts[timestamp] or 0) + 1 end
+    end
+    return counts
+end
+
+local function performPlacement(character, root, pen, name, previousTools, previousSlots, input, clicks, placed)
     local nearest, distance
     for _, item in ipairs(pen:GetChildren()) do
         local point = item:IsA("BasePart") and item.Position or (item:IsA("Model") and item:GetPivot().Position)
@@ -979,9 +1000,6 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
     local function eligible()
         return gui.Parent and auto and root.Parent and player.Character == character
             and ownPen() == pen and not carryingEgg()
-    end
-    local function placed()
-        return (tonumber(player:GetAttribute("PenEggs")) or before) > before
     end
     local function confirm(seconds)
         waitFor(root, seconds, function() return placed() or not eligible() end)
@@ -1017,7 +1035,13 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
                     pending = "A barra não aceitou a seleção"
                     collectionStatus.Text = "Selecionando o ovo na barra..."
                     if signalFace(slot, input, clicks) then
-                        if confirm(0.7) then return true end
+                        if confirm(0.45) then return true end
+                        local equipped = findEggTool(character, name, previousTools)
+                        if equipped and equipped.Parent == character and eligible() then
+                            collectionStatus.Text = "Ativando o ovo selecionado..."
+                            equipped:Activate()
+                            if confirm(2) then return true end
+                        end
                         pending = "O jogo não confirmou a colocação pelo toque"
                         local point = eligible() and worldPoint()
                         if point and type(firesignal) == "function" then
@@ -1039,12 +1063,42 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
 
     if not eligible() then return false, "Ciclo interrompido." end
     collectionStatus.Text = pending .. ". Coloque manualmente para retomar."
-    warn("[Colocação V14] " .. pending)
+    warn("[Colocação V15] " .. pending)
     while gui.Parent and auto and root.Parent and ownPen() == pen do
-        if (tonumber(player:GetAttribute("PenEggs")) or before) > before then return true end
+        if placed() then return true end
         task.wait(0.2)
     end
     return false, "Colocação não confirmada."
+end
+
+local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks)
+    local before = tonumber(player:GetAttribute("PenEggs"))
+    if not before then return false, "Contador do cercado indisponível." end
+    local original = penTimes()
+    local confirmed = false
+    local function placed()
+        if confirmed then return true end
+        if ownPen() ~= pen then return false end
+        if (tonumber(player:GetAttribute("PenEggs")) or before) > before then
+            confirmed = true
+        elseif original then
+            for timestamp, count in pairs(penTimes() or {}) do
+                if count > (original[timestamp] or 0) then
+                    confirmed = true
+                    break
+                end
+            end
+        end
+        return confirmed
+    end
+    local countChanged = player:GetAttributeChangedSignal("PenEggs"):Connect(placed)
+    local timesChanged = player:GetAttributeChangedSignal("PenEggTimes"):Connect(placed)
+    local ok, result, reason = pcall(performPlacement, character, root, pen, name,
+        previousTools, previousSlots, input, clicks, placed)
+    countChanged:Disconnect()
+    timesChanged:Disconnect()
+    if not ok then error(result) end
+    return result, reason
 end
 
 local function hatchReady(root, pen, input, clicks)
@@ -1135,6 +1189,6 @@ autoButton.Activated:Connect(function(input, clicks)
             setAuto(false)
             collectionStatus.Text = ok and reason or "Erro no ciclo. Veja o console."
         end
-        if not ok then warn("[Auto Coletar V14] " .. tostring(reason)) end
+        if not ok then warn("[Auto Coletar V15] " .. tostring(reason)) end
     end)
 end)
