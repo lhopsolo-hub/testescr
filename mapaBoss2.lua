@@ -16,23 +16,48 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS · V4 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
-local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
+    Text="MAPA DO BOSS · V5 · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(.5,-8,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
+local copy=make("TextButton",panel,{Position=UDim2.new(.5,3,0,41),Size=UDim2.new(.5,-8,0,29),
+    Text="Copiar tudo",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
     BackgroundColor3=Color3.fromRGB(28,18,37)})
-local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(.5,0,0,33)})
-local copy=make("TextButton",overlay,{Text="Copiar tudo",Position=UDim2.fromScale(.5,0),Size=UDim2.new(.5,0,0,33)})
+local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(.34,0,0,33)})
+local previous=make("TextButton",overlay,{Text="Anterior",Position=UDim2.fromScale(.34,0),Size=UDim2.new(.33,0,0,33)})
+local nextPage=make("TextButton",overlay,{Text="Próxima",Position=UDim2.fromScale(.67,0),Size=UDim2.new(.33,0,0,33)})
 local scroll=make("ScrollingFrame",overlay,{Position=UDim2.fromOffset(0,35),Size=UDim2.new(1,0,1,-35),
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
 local output=make("TextBox",scroll,{Text="",TextEditable=false,MultiLine=true,TextWrapped=true,ClearTextOnFocus=false,
     Size=UDim2.new(1,-10,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,
     TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
     Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.new(1,1,1)})
+local report
+local page=1
+local pageSize=8
+local function showPage(requested)
+    local count=math.ceil(#report/pageSize)
+    page=math.clamp(requested,1,count)
+    local first=(page-1)*pageSize+1
+    output.Text=string.format("Página %d/%d\n",page,count)
+        ..table.concat(report,"\n",first,math.min(first+pageSize-1,#report))
+    scroll.CanvasPosition=Vector2.zero
+end
 close.Activated:Connect(function() overlay.Visible=false end)
-view.Activated:Connect(function() if output.Text~="" then overlay.Visible=true end end)
+view.Activated:Connect(function()
+    if not report then return end
+    showPage(page)
+    overlay.Visible=true
+end)
+previous.Activated:Connect(function() showPage(page-1) end)
+nextPage.Activated:Connect(function() showPage(page+1) end)
 copy.Activated:Connect(function()
-    if output.Text~="" and type(setclipboard)=="function" and pcall(setclipboard,output.Text) then copy.Text="Copiado" end
+    if not report then return end
+    if type(setclipboard)=="function" and pcall(setclipboard,table.concat(report,"\n")) then
+        copy.Text="Copiado"
+    else
+        status.Text="Cópia indisponível · use Ver relatório"
+    end
 end)
 
 local started=os.clock()
@@ -172,16 +197,14 @@ end)
 local function finish()
     done=true
     for _,connection in ipairs(connections) do connection:Disconnect() end
-    local report={"MAPA DO BOSS · V4 | eventos excedentes="..dropped}
+    report={"MAPA DO BOSS · V5 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== EFEITOS · mesmos horários acima ===")
     for _,row in ipairs(fx) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
-    output.Text=text
-    local copied=type(setclipboard)=="function" and pcall(setclipboard,text)
     local saved=type(writefile)=="function" and pcall(writefile,"mapaBoss2.txt",text)
-    status.Text=copied and "Relatório copiado. Cole no chat." or (saved and "mapaBoss2.txt salvo" or "Captura concluída · Ver relatório")
+    status.Text=saved and "mapaBoss2.txt salvo · captura concluída" or "Captura concluída · Copiar tudo"
 end
 log("INÍCIO","BossHP="..tostring(hp))
 if carrying() then carryAt=os.clock() end
@@ -237,7 +260,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS · V4 · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V5 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
         task.wait(.035)
     end
