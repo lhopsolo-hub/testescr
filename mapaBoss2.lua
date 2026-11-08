@@ -16,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DO BOSS · V2 manual · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DO BOSS · V2 combate · iniciando",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(1,-10,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
@@ -40,14 +40,15 @@ copy.Activated:Connect(function()
 end)
 
 local started=os.clock()
-local lines,fx,connections={},{},{}
+local lines,fx,moves,connections={},{},{},{}
 local dropped=0
 local done=false
 local carryAt, endedAt
 local function vec(v) return v and string.format("%.1f,%.1f,%.1f",v.X,v.Y,v.Z) or "-" end
 local function log(kind, message)
-    local rows=kind=="FX" and fx or lines
-    if #rows>=(kind=="FX" and 44 or 85) then dropped=dropped+1; return end
+    local rows=kind=="FX" and fx or (kind=="MOV" and moves or lines)
+    local limit=kind=="FX" and 48 or (kind=="MOV" and 38 or 85)
+    if #rows>=limit then dropped=dropped+1; return end
     local t=os.clock()-started
     table.insert(rows,{t=t,text=string.format("%.3fs | %s | %s",t,kind,message)})
 end
@@ -91,8 +92,16 @@ local function walls(position)
     log("JAULA","pos="..vec(position).." | peças="..count.." | "..table.concat(rows,"; "))
 end
 local watched={}
+local nextId=0
+local ignored={Scenery=true,Eggs=true,CarriedEggs=true,CarryWalls=true}
 local function track(part)
-    if part:IsA("BasePart") then watched[part]=true end
+    if not part:IsA("BasePart") or watched[part] then return end
+    local path=part:GetFullName()
+    local category=path:match("^Workspace%.([^%.]+)")
+    if ignored[category] or path:find(".SleepModel.",1,true)
+        or path:find(".ZoneWalls.",1,true) then return end
+    nextId=nextId+1
+    watched[part]={id=nextId,path=path}
 end
 local function fxFolder(object)
     local path=object:GetFullName():lower()
@@ -129,14 +138,26 @@ listen(prompts.PromptTriggered,function(prompt,who)
             .." | zona="..tostring(prompt.Parent and prompt.Parent:GetAttribute("Zone")))
     end
 end)
+local function motion(r)
+    if not r then return "pos=-" end
+    local humanoid=r.Parent and r.Parent:FindFirstChildOfClass("Humanoid")
+    local velocity=r.AssemblyLinearVelocity
+    return string.format("pos=%s vel=%s XZ=%.1f walk=%.1f dir=%s chão=%s",
+        vec(r.Position),vec(velocity),Vector3.new(velocity.X,0,velocity.Z).Magnitude,
+        humanoid and humanoid.WalkSpeed or 0,vec(humanoid and humanoid.MoveDirection),
+        tostring(humanoid and humanoid.FloorMaterial~=Enum.Material.Air))
+end
+
 local hp=player:GetAttribute("BossHP")
 listen(player:GetAttributeChangedSignal("BossHP"),function()
     local value=player:GetAttribute("BossHP")
     local r=root()
     if type(hp)=="number" and type(value)=="number" and hp>=0 and value>=0 and value<hp then
-        log("DANO",string.format("%.2f -> %.2f | pos=%s",hp,value,vec(r and r.Position)))
+        log("DANO",string.format("%.2f -> %.2f | %s",hp,value,motion(r)))
     elseif type(value)~="number" or value<0 then
         log("FIM BOSS","BossHP="..tostring(value))
+    elseif type(hp)~="number" or hp<0 then
+        log("INÍCIO BOSS","BossHP="..tostring(value))
     end
     hp=value
 end)
@@ -155,8 +176,9 @@ local function finish()
     done=true
     for _,connection in ipairs(connections) do connection:Disconnect() end
     for _,row in ipairs(fx) do table.insert(lines,row) end
+    for _,row in ipairs(moves) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS · V2 manual | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · V2 combate | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -168,11 +190,21 @@ log("INÍCIO","BossHP="..tostring(hp))
 if carrying() then carryAt=os.clock() end
 task.spawn(function()
     local lastWall,lastMode,nextFX,nextModel=0,nil,0,0
-    local seen={}
+    local nextMove,seeded=0,false
     while gui.Parent and not done do
         local now=os.clock()
         local r=root()
         if r and carryAt and not endedAt then
+            if not seeded then
+                seeded=true
+                for _,part in ipairs(workspace:GetDescendants()) do
+                    if part:IsA("BasePart") and (part.Position-r.Position).Magnitude<=220 then track(part) end
+                end
+            end
+            if now>=nextMove then
+                nextMove=now+1
+                log("MOV",motion(r))
+            end
             if now-lastWall>6 then walls(r.Position); lastWall=now end
             if now>=nextModel then
                 nextModel=now+6
@@ -193,29 +225,36 @@ task.spawn(function()
                 end
             end
             if now>=nextFX then
-                nextFX=now+.18
-                for part in pairs(watched) do
+                nextFX=now+.08
+                for part,state in pairs(watched) do
                     if part.Parent then
                         local c,size=part.Color,part.Size
                         local thin=math.min(size.X,size.Y,size.Z)
                         local span=math.max(size.X,size.Y,size.Z)
-                        local red=c.R>.45 and c.R>c.G*1.35 and c.R>c.B*1.35
-                        if red and part.Transparency<.99 and span>=3 and (part.Position-r.Position).Magnitude<160+span/2 then
-                            local prior=seen[part]
-                            if not prior or (part.Position-prior.pos).Magnitude>=5 or (size-prior.size).Magnitude>=5 then
-                                seen[part]={pos=part.Position,size=size}
-                                log("FX",string.format("%s | pos=%s tam=%s rot=%s tr=%.2f rgb=%d,%d,%d fino=%.1f",
-                                    part:GetFullName(),vec(part.Position),vec(size),vec(part.Orientation),part.Transparency,
-                                    math.floor(c.R*255+.5),math.floor(c.G*255+.5),math.floor(c.B*255+.5),thin))
+                        local red=c.R>.45 and c.R>c.G*1.45 and c.R>c.B*1.45
+                        local delta=part.Position-r.Position
+                        local knownFX=fxFolder(part)
+                        local near=Vector3.new(delta.X,0,delta.Z).Magnitude<=145+span/2
+                        if red and near and part.Transparency<.98 and span>=3
+                            and (knownFX or (thin<=2 and math.abs(delta.Y)<=16)) then
+                            local prior=state.pos
+                            if not prior or (now-state.at>=.20 and ((part.Position-prior).Magnitude>=4
+                                or (size-state.size).Magnitude>=3 or (part.Orientation-state.rot).Magnitude>=10)) then
+                                state.pos,state.size,state.rot,state.at=part.Position,size,part.Orientation,now
+                                log("FX",string.format("#%d %s %s p=%s tam=%s rot=%s tr=%.2f jog=%s",
+                                    state.id,prior and "MOVE" or "ABRE",state.path,vec(part.Position),
+                                    vec(size),vec(part.Orientation),part.Transparency,vec(r.Position)))
                             end
+                        elseif state.pos then
+                            state.pos=nil
                         end
-                    else watched[part]=nil; seen[part]=nil end
+                    else watched[part]=nil end
                 end
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=85 then finish(); return end
-        status.Text=string.format("MAPA DO BOSS · V2 manual · %s · %ds",
+        status.Text=string.format("MAPA DO BOSS · V2 combate · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(85-(now-started))))
-        task.wait(.12)
+        task.wait(.08)
     end
 end)
