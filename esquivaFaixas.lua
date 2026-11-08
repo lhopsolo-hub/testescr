@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V20", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V21", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -58,17 +58,53 @@ end
 
 local active
 local enabled = false
+local speedTarget = 0
+local speedLabel = control("TextLabel", "", 128, 27)
+
+local function updateSpeedLabel(session)
+    local actual = session and string.format(" · atual %.1f", session.humanoid.WalkSpeed) or ""
+    local target = speedTarget == 0 and "Padrão do jogo" or string.format("%d studs/s", speedTarget)
+    speedLabel.Text = target .. actual
+end
+
+local function restoreSpeed(session)
+    local humanoid = session.humanoid
+    if session.appliedSpeed and humanoid.Parent and humanoid.WalkSpeed == session.appliedSpeed then
+        humanoid.WalkSpeed = session.originalSpeed
+    end
+    session.appliedSpeed = nil
+end
+
+local function applySpeed(session)
+    local humanoid = session.humanoid
+    if speedTarget == 0 then
+        restoreSpeed(session)
+    elseif humanoid.Parent then
+        if humanoid.WalkSpeed ~= session.appliedSpeed then
+            session.originalSpeed = humanoid.WalkSpeed
+        end
+        humanoid.WalkSpeed = speedTarget
+        session.appliedSpeed = speedTarget
+    end
+    if session.walking then
+        local remaining = session.runGoal - session.root.Position
+        local distance = Vector3.new(remaining.X, 0, remaining.Z).Magnitude
+        session.runUntil = os.clock() + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
+    end
+end
 local function finish(session, message)
     if active ~= session then return end
     active = nil
     session.hpConnection:Disconnect()
+    restoreSpeed(session)
+    updateSpeedLabel(nil)
     if session.walking and session.humanoid.Parent and session.root.Parent then
         session.humanoid:MoveTo(session.root.Position)
     end
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V20] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V21] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -289,7 +325,10 @@ local function startFight()
         local lastScan, lastJump = -math.huge, -math.huge
         local bounds, checkedAt = nil, -math.huge
         local ok, err = pcall(function()
+            if active ~= session then return end
+            applySpeed(session)
             while gui.Parent and active == session do
+                updateSpeedLabel(session)
                 local now = os.clock()
                 local carryingNow = player:GetAttribute("Carrying")
                 if not hasEgg(carryingNow) or session.interrupted or player.Character ~= character or not root.Parent or humanoid.Health <= 0 then
@@ -419,8 +458,7 @@ end)
 
 gui.Destroying:Connect(function()
     if active then
-        active.hpConnection:Disconnect()
-        active = nil
+        finish(active, "Painel fechado")
     end
 end)
 
@@ -1254,7 +1292,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 end
                 if not deposited then
                     depositsSkipped = depositsSkipped + 1
-                    warn("[Colocação V20] " .. tostring(problem) .. " · coleta continua")
+                    warn("[Colocação V21] " .. tostring(problem) .. " · coleta continua")
                 end
             end
             if auto and autoHatch and pen then
@@ -1274,7 +1312,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V20] " .. detail) end
+                if not ok then warn("[Auto Coletar V21] " .. detail) end
             end
             autoButton.Text = string.format("Auto ON · %d sem depósito", depositsSkipped)
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1335,7 +1373,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V20", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V21", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1363,6 +1401,24 @@ minimize:Destroy()
 eggsToggle:Destroy()
 hideEggs:Destroy()
 title.Text = "Esquiva"
+do
+    for index, label in ipairs({ "− 2", "Padrão", "+ 2" }) do
+        local button = arcadeButton(panel, label, UDim2.new((index - 1) / 3, 8, 0, 160),
+            UDim2.new(1 / 3, -16, 0, 32))
+        button.Activated:Connect(function()
+            local humanoid = active and active.humanoid
+            if index == 2 then
+                speedTarget = 0
+            else
+                local base = speedTarget > 0 and speedTarget or (humanoid and humanoid.WalkSpeed or 16)
+                speedTarget = math.clamp(math.floor(base + 0.5) + (index == 1 and -2 or 2), 8, 40)
+            end
+            if active then applySpeed(active) end
+            updateSpeedLabel(active)
+        end)
+    end
+    updateSpeedLabel(nil)
+end
 eggsTitle.Text = "Coleta e ovos"
 
 local function settingsPage(heading, description)
