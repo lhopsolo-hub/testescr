@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V46", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V48", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -86,7 +86,7 @@ local function applySpeed(session)
     if session.swamp and humanoid.WalkSpeed <= 5 then
         if not session.swampSlowed then
             session.swampSlowed = true
-            print("[Esquiva V46] Pântano · lentidão detectada")
+            print("[Esquiva V48] Pântano · lentidão detectada")
         end
         return
     end
@@ -103,7 +103,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V46] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
+            print(string.format("[Esquiva V48] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -118,13 +118,13 @@ local function finish(session, message)
     session.hpConnection:Disconnect()
     restoreSpeed(session)
     updateSpeedLabel(nil)
-    if session.walking and session.humanoid.Parent and session.root.Parent then
+    if (session.walking or session.passage) and session.humanoid.Parent and session.root.Parent then
         session.humanoid:MoveTo(session.root.Position)
     end
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V46] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V48] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -392,6 +392,97 @@ local function safeStep(root, warnings, ray, bossPosition, bounds, margin, prefe
     end
 end
 
+local EDGE_INSET = 12
+local EDGE_APPROACH = 24
+local EDGE_BOSS_RANGE = 65
+
+local function perimeterStep(root, warnings, ray, bossPosition, bounds, heading)
+    local origin = root.Position
+    local x0, x1 = bounds.minX + EDGE_INSET, bounds.maxX - EDGE_INSET
+    local z0, z1 = bounds.minZ + EDGE_INSET, bounds.maxZ - EDGE_INSET
+    if x1 <= x0 or z1 <= z0 then return end
+
+    local floor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
+    if not floor or floor.Normal.Y < .65 then return end
+
+    local best, bestScore
+    local function consider(x, z)
+        local target = Vector3.new(x, origin.Y, z)
+        local travel = target - origin
+        if travel.Magnitude < 10 or crossesPortal(origin, target, warnings, TRIGGER_MARGIN) then return end
+        for _, fraction in ipairs({ .25, .5, .75, 1 }) do
+            if threatened(origin:Lerp(target, fraction), warnings, TRIGGER_MARGIN) then return end
+        end
+        local landing = workspace:Raycast(target + Vector3.new(0, 2, 0), Vector3.new(0, -20, 0), ray)
+        if not landing or landing.Normal.Y < .65 or math.abs(landing.Position.Y - floor.Position.Y) > 2 then return end
+        travel = landing.Position + Vector3.new(0, origin.Y - floor.Position.Y, 0) - origin
+        if workspace:Raycast(origin, travel, ray)
+            or workspace:Raycast(origin + Vector3.new(0, 1.5, 0), travel, ray) then return end
+
+        local cornerTarget = math.min(x - x0, x1 - x) <= 6 and math.min(z - z0, z1 - z) <= 6
+        local score = (bossPosition and horizontalDistance(target, bossPosition) or 0)
+            + (heading and 8 * travel.Unit:Dot(heading) or 0) - (cornerTarget and 24 or 0)
+        if not bestScore or score > bestScore then
+            best, bestScore = travel, score
+        end
+    end
+
+    local function alongX(x)
+        if math.abs(origin.X - x) > EDGE_APPROACH then return end
+        consider(x, math.clamp(origin.Z - 32, z0, z1))
+        consider(x, math.clamp(origin.Z + 32, z0, z1))
+    end
+    local function alongZ(z)
+        if math.abs(origin.Z - z) > EDGE_APPROACH then return end
+        consider(math.clamp(origin.X - 32, x0, x1), z)
+        consider(math.clamp(origin.X + 32, x0, x1), z)
+    end
+    alongX(x0)
+    alongX(x1)
+    alongZ(z0)
+    alongZ(z1)
+    return best
+end
+
+local function swampPassage(part)
+    local c, size = part.Color, part.Size
+    return part.Transparency < .98 and math.abs(c.R * 255 - 70) <= 8
+        and c.G * 255 >= 245 and math.abs(c.B * 255 - 120) <= 8
+        and math.abs(size.Y - .2) <= .15
+        and math.abs(math.max(size.X, size.Z) - 15) <= 1
+        and math.abs(math.min(size.X, size.Z) - 9) <= 1
+        and math.abs(part.CFrame.UpVector.Y) >= .98
+end
+
+local function passageGoal(root, humanoid, passages, warnings, bounds, ray, previous)
+    if #passages == 0 then return end
+    local origin = root.Position
+    local floor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
+    if not floor or floor.Normal.Y < .65 then return end
+    local maxDistance = math.min(65, humanoid.WalkSpeed * 1.8)
+    local bestPart, bestTarget, bestCost
+    for _, part in ipairs(passages) do
+        local center = part.Position
+        local distance = horizontalDistance(origin, center)
+        local cost = distance - (part == previous and 4 or 0)
+        if distance <= maxDistance and (not bestCost or cost < bestCost)
+            and inCage(center, bounds, 4) and math.abs(center.Y - floor.Position.Y) <= 2 then
+            local target = Vector3.new(center.X, origin.Y, center.Z)
+            local travel = target - origin
+            if not threatened(target, warnings, TRIGGER_MARGIN)
+                and not threatened(origin:Lerp(target, .5), warnings, TRIGGER_MARGIN)
+                and not crossesPortal(origin, target, warnings, TRIGGER_MARGIN)
+                and (distance <= 1 or not workspace:Raycast(origin, travel, ray)) then
+                local landing = workspace:Raycast(center + Vector3.new(0, 4, 0), Vector3.new(0, -8, 0), ray)
+                if landing and landing.Normal.Y >= .65 and math.abs(landing.Position.Y - floor.Position.Y) <= 2 then
+                    bestPart, bestTarget, bestCost = part, target, cost
+                end
+            end
+        end
+    end
+    return bestPart, bestTarget
+end
+
 local function cosmicShape(part)
     local size = part.Size
     if size.X <= 1 and math.abs(size.Y - 44) <= 1 and math.abs(size.Z - 44) <= 1
@@ -510,12 +601,15 @@ local function startFight()
                         end
                     end
                 end
-                local circles = {}
+                local circles, passages = {}, {}
                 for _, part in ipairs(session.fxParts) do
                     if part.Parent then
                         local bossFX = folder and part:IsDescendantOf(folder)
                         local size = part.Size
                         local color = part.Color
+                        if swamp and swampPassage(part) then
+                            passages[#passages + 1] = part
+                        end
                         local smallGround = bossFX and part.Transparency < .98
                             and color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35
                             and math.abs(part.Position.Y-root.Position.Y) <= 16
@@ -652,65 +746,108 @@ local function startFight()
                 end
                 urgent = gravityPart or urgent
                 if gravityCenter then danger = true end
-                local switchToDodge = (danger and session.patrolling) or (urgent and urgent ~= session.urgent)
-                session.urgent = urgent
-                if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
-                    or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
-                    or switchToDodge or ((cosmic or swamp) and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
-                    if not insideArena then humanoid:MoveTo(root.Position) end
-                    session.walking, session.runGoal = false, nil
-                end
-                if session.walking then message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque" end
-
-                if insideArena and not session.walking and now - lastScan >= 0.04 then
-                    lastScan = now
+                local passage, passageTarget
+                if swamp and insideArena and not urgent and #passages > 0 then
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    local delta
-                    if gravityCenter then
-                        delta = safeStep(root, areas, ray, nil, bounds, 5, false, nil, gravityCenter, true)
-                    elseif (desert or ice or cosmic or swamp) and danger then
-                        delta = safeStep(root, areas, ray, nil, bounds, 1.75, false, nil, nil, cosmic or swamp)
-                    elseif not danger then
-                        local heading = session.heading or Vector3.new(1, 0, 0)
-                        if swamp then
-                            local innerBounds = {
-                                minX = bounds.minX + 8, maxX = bounds.maxX - 8,
-                                minZ = bounds.minZ + 8, maxZ = bounds.maxZ - 8,
-                            }
-                            if bossPosition then
-                                delta = safeStep(root, areas, ray, bossPosition, innerBounds, EXIT_MARGIN, true, nil, nil, true)
-                                    or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, nil, nil, true)
-                            end
-                            delta = delta or safeStep(root, areas, ray, nil, innerBounds, EXIT_MARGIN, true, heading, nil, true)
-                        end
-                        delta = delta or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
-                            or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
-                    else
-                        delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, false)
+                    passage, passageTarget = passageGoal(root, humanoid, passages, areas, bounds, ray, session.passage)
+                end
+                if passage then
+                    local oldTarget = session.passageTarget
+                    if session.passage ~= passage or not oldTarget or horizontalDistance(oldTarget, passageTarget) > 1
+                        or now >= (session.passageRefresh or 0) then
+                        humanoid:MoveTo(passageTarget)
+                        session.passageTarget = passageTarget
+                        session.passageRefresh = now + .5
                     end
-                    if not delta and danger and not gravityCenter then
-                        delta = safeStep(root, areas, ray, nil, bounds, 2.5, false, nil, nil, cosmic or swamp)
-                    end
-                    if not delta and cosmic then
-                        delta = safeStep(root, areas, ray, nil, bounds, .75, false, nil, gravityCenter, true)
-                    end
-                    if delta then
-                        local distance = horizontalDistance(Vector3.zero, delta)
-                        session.runGoal = root.Position + delta
-                        session.runUntil = now + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
-                        session.walking = true
-                        session.patrolling = not danger
-                        session.heading = Vector3.new(delta.X, 0, delta.Z).Unit
-                        humanoid:MoveTo(session.runGoal)
-                        if not session.patrolling then session.moves = session.moves + 1 end
-                        session.lastDistance = distance
-                        message = session.patrolling and "Patrulhando a arena" or "Correndo para fora do ataque"
-                    else
+                    session.passage = passage
+                    session.walking, session.runGoal = false, nil
+                    message = horizontalDistance(root.Position, passageTarget) <= 2
+                        and "No corredor verde" or "Indo para o corredor verde"
+                else
+                    if session.passage then
+                        session.passage, session.passageTarget = nil, nil
                         humanoid:MoveTo(root.Position)
-                        message = "Sem saída interna livre a pé"
+                    end
+                    local followEdge = false
+                    if insideArena and not danger and not urgent then
+                        local position = root.Position
+                        local edgeX = math.min(position.X - bounds.minX, bounds.maxX - position.X)
+                        local edgeZ = math.min(position.Z - bounds.minZ, bounds.maxZ - position.Z)
+                        local nearCorner = edgeX <= EDGE_APPROACH and edgeZ <= EDGE_APPROACH
+                        local bossNear = bossPosition and horizontalDistance(position, bossPosition) <= EDGE_BOSS_RANGE
+                        followEdge = nearCorner or (bossNear and math.min(edgeX, edgeZ) <= EDGE_APPROACH)
+                    end
+                    local switchToDodge = (danger and session.patrolling) or (urgent and urgent ~= session.urgent)
+                    session.urgent = urgent
+                    if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
+                        or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
+                        or (session.followingEdge and (threatened(root.Position:Lerp(goal, .5), areas, TRIGGER_MARGIN)
+                            or crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)))
+                        or (followEdge and session.patrolling and not session.edgeChecked)
+                        or switchToDodge or ((cosmic or swamp) and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
+                        if not insideArena then humanoid:MoveTo(root.Position) end
+                        session.walking, session.runGoal = false, nil
+                    end
+                    if session.walking then message = session.patrolling and (session.followingEdge and "Correndo pela lateral" or "Patrulhando a arena")
+                                or "Correndo para fora do ataque" end
+    
+                    if insideArena and not session.walking and now - lastScan >= 0.04 then
+                        lastScan = now
+                        ray.FilterDescendantsInstances = folder and { character, folder } or { character }
+                        local delta, edgeDelta
+                        if gravityCenter then
+                            delta = safeStep(root, areas, ray, nil, bounds, 5, false, nil, gravityCenter, true)
+                        elseif (desert or ice or cosmic or swamp) and danger then
+                            delta = safeStep(root, areas, ray, nil, bounds, 1.75, false, nil, nil, cosmic or swamp)
+                        elseif not danger then
+                            local heading = session.heading or Vector3.new(1, 0, 0)
+                            if followEdge then
+                                edgeDelta = perimeterStep(root, areas, ray, bossPosition, bounds, heading)
+                                delta = edgeDelta
+                            end
+                            if swamp and not delta then
+                                local innerBounds = {
+                                    minX = bounds.minX + 8, maxX = bounds.maxX - 8,
+                                    minZ = bounds.minZ + 8, maxZ = bounds.maxZ - 8,
+                                }
+                                if bossPosition then
+                                    delta = safeStep(root, areas, ray, bossPosition, innerBounds, EXIT_MARGIN, true, nil, nil, true)
+                                        or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, nil, nil, true)
+                                end
+                                delta = delta or safeStep(root, areas, ray, nil, innerBounds, EXIT_MARGIN, true, heading, nil, true)
+                            end
+                            delta = delta or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
+                                or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
+                        else
+                            delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, false)
+                        end
+                        if not delta and danger and not gravityCenter then
+                            delta = safeStep(root, areas, ray, nil, bounds, 2.5, false, nil, nil, cosmic or swamp)
+                        end
+                        if not delta and cosmic then
+                            delta = safeStep(root, areas, ray, nil, bounds, .75, false, nil, gravityCenter, true)
+                        end
+                        if delta then
+                            local distance = horizontalDistance(Vector3.zero, delta)
+                            session.runGoal = root.Position + delta
+                            session.runUntil = now + math.clamp(distance / math.max(1, humanoid.WalkSpeed) + 0.55, 0.7, 3.5)
+                            session.walking = true
+                            session.patrolling = not danger
+                            session.edgeChecked = followEdge
+                            session.followingEdge = edgeDelta ~= nil
+                            session.heading = Vector3.new(delta.X, 0, delta.Z).Unit
+                            humanoid:MoveTo(session.runGoal)
+                            if not session.patrolling then session.moves = session.moves + 1 end
+                            session.lastDistance = distance
+                            message = session.patrolling and (session.followingEdge and "Correndo pela lateral" or "Patrulhando a arena")
+                                or "Correndo para fora do ataque"
+                        else
+                            humanoid:MoveTo(root.Position)
+                            message = "Sem saída interna livre a pé"
+                        end
                     end
                 end
-                if (cosmic or (not desert and not ice)) and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
+                if not passage and (cosmic or (not desert and not ice)) and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
@@ -725,7 +862,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V46] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V48] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1623,7 +1760,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V46] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V48] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1732,7 +1869,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V46] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V48] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1759,14 +1896,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V46] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V48] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V46] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V48] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1827,7 +1964,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V46] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V48] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1838,7 +1975,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V46] " .. problem) end
+                if problem then warn("[Inventário V48] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1886,7 +2023,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V46] " .. detail) end
+                if not ok then warn("[Auto Coletar V48] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1946,7 +2083,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V46", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V48", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -2060,7 +2197,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V46] " .. tostring(reason or count))
+        warn("[Inventário V48] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2088,7 +2225,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V46] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V48] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2117,7 +2254,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V46] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V48] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
