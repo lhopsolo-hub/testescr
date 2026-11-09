@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V39", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V40", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -110,7 +110,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V39] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V40] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -685,7 +685,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V39] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V40] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -905,18 +905,29 @@ end
 
 local function findFace(scope, text, zoneNumber)
     if not scope then return end
-    local found
+    local found, named, ambiguous, namedAmbiguous
     for _, object in ipairs(scope:GetDescendants()) do
         if object.Name == "Face" and object:IsA("GuiButton") and visibleControl(object)
             and hasLabel(object, text) then
             local card = object.Parent and object.Parent.Parent
+            if zoneNumber == 10 and card then
+                for _, label in ipairs(card:GetDescendants()) do
+                    if label:IsA("TextLabel") and visibleControl(label)
+                        and label.Text:gsub("Â", "â"):lower():gsub("â", "a"):find("pantano", 1, true) then
+                        if named and named ~= object then namedAmbiguous = true end
+                        named = object
+                        break
+                    end
+                end
+            end
             if not zoneNumber or (card and hasLabel(card, tostring(zoneNumber))) then
-                if found then return end
+                if found then ambiguous = true end
                 found = object
             end
         end
     end
-    return found
+    if named then return not namedAmbiguous and named or nil end
+    return not ambiguous and found or nil
 end
 
 local function waitFor(root, timeout, check, interval)
@@ -1155,7 +1166,7 @@ local function previewEgg(icon, object)
     icon.Text = ""
 end
 
-local lastSignature
+local lastSignature, lastEggObjects = nil, {}
 local function refreshEggs()
     local rows = {}
     local zoneNumber = selectedZone
@@ -1187,21 +1198,25 @@ local function refreshEggs()
         if a.rarity ~= b.rarity then return a.rarity < b.rarity end
         return a.location < b.location
     end)
-    local keys = {}
+    local keys, eggObjects, changed = {}, {}, false
     for index = 1, math.min(#rows, 60) do
         local row = rows[index]
+        eggObjects[index] = row.object
+        if row.object ~= lastEggObjects[index] then changed = true end
         keys[index] = row.name .. "|" .. row.rarity .. "|" .. row.image .. "|" .. row.location
     end
     local signature = zoneNumber .. ":" .. #rows .. ":" .. table.concat(keys, "\n")
-    if lastSignature == signature then return end
-    lastSignature = signature
+    if lastSignature == signature and not changed then return end
+    lastSignature, lastEggObjects = signature, eggObjects
     for _, item in ipairs(list:GetChildren()) do
         if not item:IsA("UIListLayout") then item:Destroy() end
     end
-    eggsTitle.Text = "OVOS · ÁREA " .. zoneNumber .. " (" .. #rows .. ")"
+    local areaName = zoneNumber == 10 and "PÂNTANO" or ("ÁREA " .. zoneNumber)
+    eggsTitle.Text = "OVOS · " .. areaName .. " (" .. #rows .. ")"
     if #rows == 0 then
         make("TextLabel", list, {
-            Text = "Nenhum ovo desta área carregado.", Size = UDim2.new(1, -4, 0, 62),
+            Text = zoneNumber == 10 and "Nenhum ovo do Pântano carregado. Vá até a área para atualizar a lista."
+                or "Nenhum ovo desta área carregado.", Size = UDim2.new(1, -4, 0, 62),
             BackgroundTransparency = 1, TextWrapped = true, TextSize = 12,
             TextColor3 = Color3.fromRGB(198, 211, 231), Font = Enum.Font.Gotham,
         })
@@ -1514,7 +1529,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V39] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V40] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1623,7 +1638,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V39] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V40] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1650,14 +1665,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V39] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V40] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V39] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V40] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1706,7 +1721,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V39] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V40] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1717,7 +1732,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V39] " .. problem) end
+                if problem then warn("[Inventário V40] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1763,7 +1778,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V39] " .. detail) end
+                if not ok then warn("[Auto Coletar V40] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1792,23 +1807,22 @@ end
 
 local previousArea = arcadeButton(eggsPanel, "‹", UDim2.fromOffset(7, 39), UDim2.fromOffset(29, 27))
 local nextArea = arcadeButton(eggsPanel, "›", UDim2.new(1, -36, 0, 39), UDim2.fromOffset(29, 27))
-local areaLabel = make("TextLabel", eggsPanel, {
-    Position = UDim2.fromOffset(38, 39), Size = UDim2.new(1, -76, 0, 27),
-    Text = "ÁREA 01 / 12", BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(242, 250, 255),
-    Font = Enum.Font.GothamBold, TextSize = 12,
-})
-local function chooseArea(delta)
+local areaLabel = arcadeButton(eggsPanel, "ÁREA 01 · toque: Pântano",
+    UDim2.fromOffset(38, 39), UDim2.new(1, -76, 0, 27))
+local function chooseArea(zoneNumber)
     if auto or collecting then
         collectionStatus.Text = "Desligue o ciclo antes de trocar de área."
         return
     end
-    selectedZone = (selectedZone - 1 + delta) % 12 + 1
-    areaLabel.Text = string.format("ÁREA %02d / 12", selectedZone)
+    selectedZone = zoneNumber
+    areaLabel.Text = selectedZone == 10 and "PÂNTANO · ID 10"
+        or string.format("ÁREA %02d · toque: Pântano", selectedZone)
     list.CanvasPosition = Vector2.zero
     refreshEggs()
 end
-previousArea.Activated:Connect(function() chooseArea(-1) end)
-nextArea.Activated:Connect(function() chooseArea(1) end)
+areaLabel.Activated:Connect(function() chooseArea(10) end)
+previousArea.Activated:Connect(function() chooseArea((selectedZone - 2) % 12 + 1) end)
+nextArea.Activated:Connect(function() chooseArea(selectedZone % 12 + 1) end)
 
 local palettes = {
     { "Neon", Color3.fromRGB(15, 15, 31), Color3.fromRGB(35, 31, 65), Color3.fromRGB(90, 57, 169), Color3.fromRGB(124, 232, 255) },
@@ -1824,7 +1838,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V39", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V40", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1938,7 +1952,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V39] " .. tostring(reason or count))
+        warn("[Inventário V40] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1966,7 +1980,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V39] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V40] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -1995,7 +2009,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V39] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V40] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
