@@ -41,7 +41,7 @@ gui.ResetOnSpawn = false
 local button = Instance.new("TextButton")
 button.Size = UDim2.fromOffset(300, 55)
 button.Position = UDim2.fromScale(.05, .77)
-button.Text = "Auto Chocar ligado · toque para pausar"
+button.Text = "Auto Chocar V2 ligado · toque para pausar"
 button.TextWrapped = true
 button.Parent = gui
 gui.Parent = playerGui
@@ -86,8 +86,7 @@ local function hatchBatch(root, character, pen)
     local count, started = 0, os.clock()
     while active() do
         local prompt = nearestPrompt(pen, root)
-        local face = type(firesignal) == "function" and hatchFace()
-        if not prompt and not face then break end
+        if not prompt and not hatchFace() then break end
 
         local before = tonumber(player:GetAttribute("PenEggs"))
         local original = penTimes()
@@ -97,7 +96,8 @@ local function hatchBatch(root, character, pen)
             local current = tonumber(player:GetAttribute("PenEggs"))
             if before and current then
                 confirmed = confirmed or current < before
-            elseif original then
+            end
+            if not confirmed and original then
                 local times = penTimes()
                 for timestamp, amount in pairs(original) do
                     if times and (times[timestamp] or 0) < amount then
@@ -118,22 +118,25 @@ local function hatchBatch(root, character, pen)
         end
 
         if prompt and pcall(function() prompt:InputHoldBegin() end) then
-            local releaseAt = os.clock() + prompt.HoldDuration
+            local releaseAt = os.clock() + math.max(.05, prompt.HoldDuration)
             repeat
                 runService.Heartbeat:Wait()
             until not active() or not prompt.Parent or confirmed or os.clock() >= releaseAt
             pcall(function() prompt:InputHoldEnd() end)
             waitConfirmation()
         end
-        if not confirmed and active() and face and hatchFace() == face
-            and pcall(firesignal, face.Activated, lastInput, 1) then
-            waitConfirmation()
+        local face = not confirmed and active() and hatchFace()
+        if face and type(firesignal) == "function" then
+            local sent = pcall(firesignal, face.Activated, lastInput, 1)
+            if sent then waitConfirmation() end
         end
 
         countChanged:Disconnect()
         timesChanged:Disconnect()
         if not confirmed then
-            return count, active() and "Eclosão sem confirmação" or nil
+            local attempted = prompt and "prompt" or "botão"
+            if prompt and face then attempted = "prompt + botão" end
+            return count, active() and ("Sem confirmação · " .. attempted) or nil
         end
         count = count + 1
     end
@@ -143,7 +146,7 @@ end
 button.Activated:Connect(function(input)
     lastInput = input
     enabled = not enabled
-    button.Text = enabled and "Auto Chocar ligado · toque para pausar"
+    button.Text = enabled and "Auto Chocar V2 ligado · toque para pausar"
         or "Pausado · toque para retomar"
 end)
 
@@ -155,13 +158,18 @@ task.spawn(function()
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local pen = enabled and root and ownPen()
         if pen then
-            local count, problem, elapsed = hatchBatch(root, character, pen)
+            local ok, count, problem, elapsed = pcall(hatchBatch, root, character, pen)
+            if not gui.Parent then break end
+            if not ok then
+                warn("[Auto Chocar V2] " .. tostring(count))
+                count, problem = 0, "Falha · confira o console"
+            end
             total = total + count
             if count > 0 then
                 print(string.format("[Auto Chocar] %d ovo(s) em %.2f s", count, elapsed or 0))
             end
             if enabled then
-                button.Text = string.format("Auto Chocar · %d chocado(s)\n%s", total,
+                button.Text = string.format("Auto Chocar V2 · %d chocado(s)\n%s", total,
                     problem or "Aguardando ovos prontos ao alcance")
             end
             if problem then interval = 1 end
