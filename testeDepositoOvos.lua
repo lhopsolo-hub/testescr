@@ -1,4 +1,5 @@
-local player = game:GetService("Players").LocalPlayer
+print("[Auto Chocar V3] Iniciando")
+local player = assert(game:GetService("Players").LocalPlayer, "[Auto Chocar V3] Execute no cliente do jogo")
 local runService = game:GetService("RunService")
 
 local function ownPen()
@@ -31,20 +32,30 @@ local function promptPosition(prompt)
     if host:IsA("Model") then return host:GetPivot().Position end
 end
 
-local playerGui = player:WaitForChild("PlayerGui")
+local playerGui = assert(player:WaitForChild("PlayerGui", 8), "[Auto Chocar V3] PlayerGui indisponível")
 local previous = playerGui:FindFirstChild("TesteChocarOvos")
 if previous then previous:Destroy() end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "TesteChocarOvos"
 gui.ResetOnSpawn = false
+gui.DisplayOrder = 1000
 local button = Instance.new("TextButton")
-button.Size = UDim2.fromOffset(300, 55)
-button.Position = UDim2.fromScale(.05, .77)
-button.Text = "Auto Chocar V2 ligado · toque para pausar"
+button.AnchorPoint = Vector2.new(1, 0)
+button.Size = UDim2.new(.48, 0, 0, 60)
+button.Position = UDim2.new(1, -12, 0, 16)
+button.BackgroundColor3 = Color3.fromRGB(28, 38, 54)
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.Font = Enum.Font.GothamBold
+button.TextSize = 14
+local size = Instance.new("UISizeConstraint")
+size.MaxSize = Vector2.new(300, 60)
+size.Parent = button
+button.Text = "Auto Chocar V3 ligado · toque para pausar"
 button.TextWrapped = true
 button.Parent = gui
 gui.Parent = playerGui
+print("[Auto Chocar V3] Painel criado")
 
 local enabled, lastInput = true, nil
 
@@ -146,7 +157,7 @@ end
 button.Activated:Connect(function(input)
     lastInput = input
     enabled = not enabled
-    button.Text = enabled and "Auto Chocar V2 ligado · toque para pausar"
+    button.Text = enabled and "Auto Chocar V3 ligado · toque para pausar"
         or "Pausado · toque para retomar"
 end)
 
@@ -161,7 +172,7 @@ task.spawn(function()
             local ok, count, problem, elapsed = pcall(hatchBatch, root, character, pen)
             if not gui.Parent then break end
             if not ok then
-                warn("[Auto Chocar V2] " .. tostring(count))
+                warn("[Auto Chocar V3] " .. tostring(count))
                 count, problem = 0, "Falha · confira o console"
             end
             total = total + count
@@ -169,10 +180,13 @@ task.spawn(function()
                 print(string.format("[Auto Chocar] %d ovo(s) em %.2f s", count, elapsed or 0))
             end
             if enabled then
-                button.Text = string.format("Auto Chocar V2 · %d chocado(s)\n%s", total,
+                button.Text = string.format("Auto Chocar V3 · %d chocado(s)\n%s", total,
                     problem or "Aguardando ovos prontos ao alcance")
             end
             if problem then interval = 1 end
+        elseif enabled then
+            button.Text = root and "Auto Chocar V3 · aguardando cercado"
+                or "Auto Chocar V3 · aguardando personagem"
         end
         task.wait(interval)
     end
