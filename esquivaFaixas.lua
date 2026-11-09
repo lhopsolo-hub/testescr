@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V57", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V59", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -58,13 +58,14 @@ end
 
 local active
 local enabled = false
-local speedTarget = 0
+local speedTarget = 80
 local speedLabel = control("TextLabel", "", 128, 27)
 
 local function updateSpeedLabel(session)
     local actual = session and string.format(" · atual %.1f", session.humanoid.WalkSpeed) or ""
-    if session and session.swampSlowed then
-        speedLabel.Text = "Pântano · lentidão do boss" .. actual
+    if session and session.slowed then
+        speedLabel.Text = session.slowArea .. " · lentidão do boss" .. actual
+        return
     elseif session and session.speedBoost then
         speedLabel.Text = string.format("%s · alvo %.0f%s", session.speedBoost, session.appliedSpeed or session.humanoid.WalkSpeed, actual)
         return
@@ -83,15 +84,15 @@ end
 
 local function applySpeed(session)
     local humanoid = session.humanoid
-    if session.swamp and humanoid.WalkSpeed <= 5 then
-        if not session.swampSlowed then
-            session.swampSlowed = true
-            print("[Esquiva V57] Pântano · lentidão detectada")
+    if session.slowArea and humanoid.WalkSpeed <= 5 then
+        if not session.slowed then
+            session.slowed = true
+            print("[Esquiva V59] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
-    local recovered = session.swampSlowed
-    session.swampSlowed = false
+    local recovered = session.slowed
+    session.slowed = false
     if speedTarget == 0 and not session.speedBoost then
         restoreSpeed(session)
     elseif humanoid.Parent then
@@ -99,11 +100,11 @@ local function applySpeed(session)
             session.originalSpeed = humanoid.WalkSpeed
         end
         local desired = speedTarget == 0 and session.originalSpeed or speedTarget
-        if session.speedBoost then desired = math.min(80, desired * 2) end
+        if speedTarget == 0 and session.speedBoost then desired = math.min(80, desired * 2) end
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V57] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
+            print(string.format("[Esquiva V59] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -124,7 +125,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V57] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V59] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -345,15 +346,16 @@ local function outsideCircleTarget(root, circles, warnings, bounds, ray)
     return best
 end
 
-local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar, heading, gravityCenter, cosmic)
+local function safeStep(root, warnings, ray, bossPosition, bounds, margin, preferFar, heading, gravityCenter, cosmic, maxDistance)
     local origin = root.Position
     local currentFloor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
     if not currentFloor or currentFloor.Normal.Y < 0.65 then return end
     local clearance = origin.Y - currentFloor.Position.Y
     local bossDistance = bossPosition and horizontalDistance(origin, bossPosition)
     local minimumBossDistance = bossDistance and (preferFar and bossDistance + 4 or math.max(0, bossDistance - 2))
-    local first, last, increment = 2, MAX_RUN_DISTANCE, 1
-    if preferFar then first, last, increment = MAX_RUN_DISTANCE, 5, -1 end
+    maxDistance = maxDistance or MAX_RUN_DISTANCE
+    local first, last, increment = 2, maxDistance, 1
+    if preferFar then first, last, increment = maxDistance, 5, -1 end
     local outward
     if gravityCenter then
         local offset = origin - gravityCenter
@@ -617,7 +619,7 @@ local function startFight()
     local cosmic = zoneNumber == 5
     local swamp, reef = zoneNumber == 10, zoneNumber == 11
     local fallbackBounds = mappedBounds[zoneNumber]
-    local session = { swamp = swamp, crossedPassages = setmetatable({}, { __mode = "k" }), speedBoost = cosmic and "Área 5" or (swamp and "Pântano"), moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
+    local session = { slowArea = swamp and "Pântano" or (reef and "Recife"), crossedPassages = setmetatable({}, { __mode = "k" }), speedBoost = cosmic and "Área 5" or (swamp and "Pântano"), moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
     ray.RespectCanCollide = true
@@ -649,7 +651,7 @@ local function startFight()
                     finish(session, "Luta encerrada")
                     return
                 end
-                if swamp and (session.swampSlowed or humanoid.WalkSpeed ~= session.appliedSpeed) then
+                if session.slowArea and (session.slowed or (session.appliedSpeed and humanoid.WalkSpeed ~= session.appliedSpeed)) then
                     applySpeed(session)
                 end
                 if now - checkedAt >= 0.25 then
@@ -798,10 +800,10 @@ local function startFight()
                         nearestBoss = horizontalDistance(root.Position, bossPosition)
                     end
                 end
-                if swamp then
+                if swamp or reef then
                     local map = workspace:FindFirstChild("Map")
                     local zones = map and map:FindFirstChild("Zones")
-                    local zone = zones and zones:FindFirstChild("Zone10")
+                    local zone = zones and zones:FindFirstChild("Zone" .. zoneNumber)
                     local boss = zone and zone:FindFirstChild("Boss")
                     local position = boss and ((boss:IsA("Model") and boss:GetPivot().Position)
                         or (boss:IsA("BasePart") and boss.Position))
@@ -839,7 +841,7 @@ local function startFight()
                         circleStatus = "Círculo detectado · sem destino livre"
                     end
                 end
-                local danger = threatened(root.Position, areas, TRIGGER_MARGIN)
+                local danger = threatened(root.Position, areas, reef and 4 or TRIGGER_MARGIN)
                 local message = not insideArena and "Aguardando perímetro fechado" or "Dentro da arena"
                 local goal = session.runGoal
                 local goalDistance = goal and horizontalDistance(root.Position, goal) or math.huge
@@ -871,7 +873,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V57] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V59] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -938,15 +940,18 @@ local function startFight()
                         local delta, edgeDelta
                         if gravityCenter then
                             delta = safeStep(root, areas, ray, nil, bounds, 5, false, nil, gravityCenter, true)
-                        elseif (desert or ice or cosmic or swamp or reef) and danger then
+                        elseif reef and danger then
+                            delta = safeStep(root, areas, ray, bossPosition, bounds, 12, true, nil, nil, true, 40)
+                                or safeStep(root, areas, ray, nil, bounds, 8, true, nil, nil, true, 32)
+                        elseif (desert or ice or cosmic or swamp) and danger then
                             delta = safeStep(root, areas, ray, nil, bounds, 1.75, false, nil, nil, cosmic or swamp)
-                        elseif not danger and not reef then
+                        elseif not danger then
                             local heading = session.heading or Vector3.new(1, 0, 0)
                             if followEdge then
                                 edgeDelta = perimeterStep(root, areas, ray, bossPosition, bounds, heading)
                                 delta = edgeDelta
                             end
-                            if swamp and not delta then
+                            if (swamp or reef) and not delta then
                                 local innerBounds = {
                                     minX = bounds.minX + 8, maxX = bounds.maxX - 8,
                                     minZ = bounds.minZ + 8, maxZ = bounds.maxZ - 8,
@@ -1003,7 +1008,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V57] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V59] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1077,7 +1082,7 @@ round(collectionStatus, 6)
 
 local auto, rareHunt = false, false
 local releasedEggs = {}
-local autoDeposit, autoHatch = true, true
+local autoDeposit, autoHatch = false, false
 local depositing, hatching = false, false
 local selectedZone = 1
 local autoButton = make("TextButton", eggsPanel, {
@@ -1335,6 +1340,14 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
         return not cancelled() and result or nil
     end
 
+    local function pressWhenReady(scopeName, label, area)
+        task.wait(.25)
+        if cancelled() or root.Parent ~= character then return false, "Lançamento interrompido." end
+        local face = control(scopeName, label, area)
+        if not face then return false, label .. ": o botão mudou antes do toque." end
+        return signalFace(face, input, clicks)
+    end
+
     if not menuOpen() then
         local throw = inThrowZone() and awaitUI(1.2, function()
             return control("Actions", "ARREMESSAR")
@@ -1344,7 +1357,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
             collectionStatus.Text = "Indo para a plataforma de lançamento..."
             local launch = awaitUI(4, function() return control("TopNav", "Lançar") end)
             if not launch then return false, "Botão Lançar não encontrado no HUD." end
-            local ok, reason = signalFace(launch, input, clicks)
+            local ok, reason = pressWhenReady("TopNav", "Lançar")
             if not ok then return false, "Lançar: " .. reason end
             throw = awaitUI(7, function()
                 if menuOpen() then return true end
@@ -1355,7 +1368,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
         if not menuOpen() then
             if not throw then return false, "A plataforma não mostrou o botão Arremessar no HUD." end
             collectionStatus.Text = "Abrindo o seletor de áreas..."
-            local ok, reason = signalFace(throw, input, clicks)
+            local ok, reason = pressWhenReady("Actions", "ARREMESSAR")
             if not ok then return false, "Arremessar: " .. reason end
         end
     end
@@ -1369,7 +1382,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
             or "Arremessar foi acionado, mas o seletor de áreas não abriu."
     end
     local before = root.Position
-    local ok, reason = signalFace(face, input, clicks)
+    local ok, reason = pressWhenReady("Panel", "IR!", zoneNumber)
     if not ok then return false, "IR!: " .. reason end
 
     collectionStatus.Text = "Aguardando chegada à Área " .. zoneNumber .. "..."
@@ -1381,7 +1394,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
         if horizontalDistance(before, current) >= 55 and inEggZone(current, zoneNumber)
             and humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
             landedAt = landedAt or os.clock()
-            return os.clock() - landedAt >= .2
+            return os.clock() - landedAt >= .45
         end
         landedAt = nil
     end)
@@ -1514,14 +1527,14 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
 
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         local settledAt
-        local settled = waitFor(root, 1.5, function()
+        local settled = waitFor(root, 2.5, function()
             if not allowed() or not prompt:IsDescendantOf(egg) or not prompt.Enabled then return end
             local point = promptPosition(prompt)
             if humanoid and point and (root.Position - point).Magnitude <= prompt.MaxActivationDistance
                 and humanoid.FloorMaterial ~= Enum.Material.Air
                 and horizontalDistance(root.AssemblyLinearVelocity, Vector3.zero) <= 3 then
                 settledAt = settledAt or os.clock()
-                return os.clock() - settledAt >= .12
+                return os.clock() - settledAt >= .32
             end
             settledAt = nil
         end, .04)
@@ -1540,12 +1553,15 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
         local holdDuration = math.max(0, prompt.HoldDuration)
         prompt:InputHoldBegin()
         local releaseAt = os.clock() + holdDuration + .08
-        while os.clock() < releaseAt and allowed() and player.Character == character and prompt.Parent do
+        while os.clock() < releaseAt and not carryingEgg() and allowed() and player.Character == character
+            and prompt:IsDescendantOf(egg) and prompt.Enabled do
+            local point = promptPosition(prompt)
+            if not point or (root.Position - point).Magnitude > prompt.MaxActivationDistance then break end
             task.wait(math.min(0.04, math.max(0, releaseAt - os.clock())))
         end
         pcall(function() prompt:InputHoldEnd() end)
         heldPrompt = nil
-        local confirmationEnd = os.clock() + 1.25
+        local confirmationEnd = os.clock() + 2.5
         while not carryingEgg() and allowed() and player.Character == character and os.clock() < confirmationEnd do
             task.wait(0.04)
         end
@@ -2057,7 +2073,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V57] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V59] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2166,7 +2182,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V57] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V59] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2193,14 +2209,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V57] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V59] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V57] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V59] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2224,7 +2240,7 @@ autoButton.Activated:Connect(function(input, clicks)
         local retryAfter = setmetatable({}, { __mode = "k" })
         local visited = setmetatable({}, { __mode = "k" })
         local preferredEgg
-        local stopAfterDeposit, finalStatus
+        local finalStatus
         local function finishDeposit(character, root)
             local pen = ownPen()
             if pendingDeposit and autoDeposit then
@@ -2236,7 +2252,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V57] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V59] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2247,7 +2263,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V57] " .. problem) end
+                if problem then warn("[Inventário V59] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2256,11 +2272,7 @@ autoButton.Activated:Connect(function(input, clicks)
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not root then return false, "Aguardando personagem" end
             if carryingEgg() then return false, "Aguardando fim do transporte" end
-            if pendingDeposit then
-                local done, reason = finishDeposit(character, root)
-                if done and stopAfterDeposit then return true, "Ovo épico ou superior obtido · ciclo concluído.", false, true end
-                return done, reason
-            end
+            if pendingDeposit then return finishDeposit(character, root) end
             if root.Position.Z > -50 or not inEggZone(root.Position, zoneNumber) then
                 local launched, problem = launchZone(character, root, input, clicks,
                     function() return auto and gui.Parent end, zoneNumber)
@@ -2318,14 +2330,11 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             table.clear(retryAfter)
             pendingDeposit = { name = name, previousTools = previousTools, previousSlots = previousSlots }
-            stopAfterDeposit = rareHunt
             if not auto then return false, "Ciclo desligado" end
             local returnedCharacter = player.Character
             local returnedRoot = returnedCharacter and returnedCharacter:FindFirstChild("HumanoidRootPart")
             if not returnedRoot then return false, "Aguardando personagem na base" end
-            local done, reason = finishDeposit(returnedCharacter, returnedRoot)
-            if done and stopAfterDeposit then return true, "Ovo épico ou superior obtido · ciclo concluído.", false, true end
-            return done, reason
+            return finishDeposit(returnedCharacter, returnedRoot)
         end
         while gui.Parent and auto do
             local ok, success, reason, retryEgg, stop = pcall(runRound)
@@ -2341,7 +2350,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V57] " .. detail) end
+                if not ok then warn("[Auto Coletar V59] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2450,7 +2459,7 @@ local shell = make("Frame", gui, {
 round(shell, 12)
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(16, 4), Size = UDim2.new(1, -155, 0, 40),
-    Text = "Central de Ovos  /  V57", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "Central de Ovos  /  V59", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
@@ -2497,7 +2506,7 @@ do
                 speedTarget = 0
             else
                 local base = speedTarget > 0 and speedTarget or (active and active.speedBoost and active.originalSpeed) or (humanoid and humanoid.WalkSpeed or 16)
-                speedTarget = math.clamp(math.floor(base + 0.5) + (index == 1 and -2 or 2), 8, 40)
+                speedTarget = math.clamp(math.floor(base + 0.5) + (index == 1 and -2 or 2), 8, 80)
             end
             if active then applySpeed(active) end
             updateSpeedLabel(active)
@@ -2531,8 +2540,8 @@ end
 local penPage = settingsPage("Colocação", "Marque um ponto dentro do celeiro. A coleta aguarda o depósito antes de sair novamente.")
 local hatchPage = settingsPage("Eclosão", "Entre rodadas, tenta chocar os ovos prontos que estiverem ao alcance no seu cercado.")
 local looksPage = settingsPage("Aparência", "Arraste pelo título para mover a central.")
-local penToggle = arcadeButton(penPage, "Auto Colocar · ON", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
-local hatchToggle = arcadeButton(hatchPage, "Auto Chocar · ON", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
+local penToggle = arcadeButton(penPage, "Auto Colocar · OFF", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
+local hatchToggle = arcadeButton(hatchPage, "Auto Chocar · OFF", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
 penToggle.Activated:Connect(function()
     autoDeposit = not autoDeposit
     penToggle.Text = autoDeposit and "Auto Colocar · ON" or "Auto Colocar · OFF"
@@ -2573,7 +2582,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V57] " .. tostring(reason or count))
+        warn("[Inventário V59] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2601,7 +2610,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V57] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V59] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2630,7 +2639,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V57] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V59] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
@@ -2658,7 +2667,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V57"
+    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V59"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
     content.Visible = not compact
     zoomIn.Visible, zoomOut.Visible = not compact, not compact
