@@ -50,12 +50,13 @@ gui.ResetOnSpawn = false
 local button = Instance.new("TextButton")
 button.Size = UDim2.fromOffset(300, 55)
 button.Position = UDim2.fromScale(.05, .65)
-button.Text = "Auto Colocar ligado · toque para pausar"
+button.Text = "Auto Colocar V3 ligado · toque para pausar"
 button.TextWrapped = true
 button.Parent = gui
 gui.Parent = playerGui
 
 local enabled = true
+local lastActivated
 local function deposit()
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -73,8 +74,14 @@ local function deposit()
     while active() do
         local tool = findEgg(character)
         if not tool then break end
-        local before = tonumber(player:GetAttribute("PenEggs"))
-        if not before then return "Contador do cercado indisponível" end
+        if tool == lastActivated and tool.Parent == character then
+            -- Se a pilha usa a mesma Tool, reproduz a seleção novamente.
+            humanoid:UnequipTools()
+            runService.Heartbeat:Wait()
+            if not active() then break end
+            tool = findEgg(character)
+            if not tool then break end
+        end
 
         if tool.Parent ~= character then
             humanoid:EquipTool(tool)
@@ -86,6 +93,8 @@ local function deposit()
         if not active() then break end
         if tool.Parent ~= character then return "O jogo não equipou o ovo" end
 
+        local before = tonumber(player:GetAttribute("PenEggs"))
+        if not before then return "Contador do cercado indisponível" end
         local original = penTimes()
         local sentAt = os.clock()
         local confirmed = false
@@ -104,12 +113,14 @@ local function deposit()
 
         local eggCount = player:GetAttributeChangedSignal("PenEggs"):Connect(check)
         local eggTimes = player:GetAttributeChangedSignal("PenEggTimes"):Connect(check)
+        lastActivated = tool
         local sent, err = pcall(function() tool:Activate() end)
         while sent and not confirmed and active() and os.clock() - sentAt < 2 do
             runService.Heartbeat:Wait()
         end
         eggCount:Disconnect()
         eggTimes:Disconnect()
+        if tool.Parent == character then tool:Deactivate() end
 
         if not sent then error(err) end
         if not confirmed then
@@ -118,13 +129,18 @@ local function deposit()
         end
         count = count + 1
         print(string.format("[Teste Depósito] Ovo %d confirmado em %.0f ms", count, (os.clock() - sentAt) * 1000))
+        -- Dá tempo para o inventário retirar a Tool já consumida.
+        local refreshUntil = os.clock() + .2
+        while active() and tool.Parent == character and os.clock() < refreshUntil do
+            runService.Heartbeat:Wait()
+        end
     end
     return string.format("%d colocado(s) em %.2f s", count, os.clock() - start)
 end
 
 button.Activated:Connect(function()
     enabled = not enabled
-    button.Text = enabled and "Auto Colocar ligado · toque para pausar"
+    button.Text = enabled and "Auto Colocar V3 ligado · toque para pausar"
         or "Pausado · toque para retomar"
 end)
 
