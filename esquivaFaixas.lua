@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V49", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V50", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -86,7 +86,7 @@ local function applySpeed(session)
     if session.swamp and humanoid.WalkSpeed <= 5 then
         if not session.swampSlowed then
             session.swampSlowed = true
-            print("[Esquiva V49] Pântano · lentidão detectada")
+            print("[Esquiva V50] Pântano · lentidão detectada")
         end
         return
     end
@@ -103,7 +103,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V49] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
+            print(string.format("[Esquiva V50] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -124,7 +124,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V49] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V50] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -196,6 +196,7 @@ local function projectWarnings(tracked, now)
                             frame = warning.frame + warning.velocity * ((seconds + previousTime) / 2),
                             size = warning.size + warning.growth * seconds + sweep,
                             projected = true,
+                            swampWall = warning.swampWall,
                             portal = warning.swampWall,
                         })
                         previousTime = seconds
@@ -454,33 +455,62 @@ local function swampPassage(part)
         and math.abs(part.CFrame.UpVector.Y) >= .98
 end
 
-local function passageGoal(root, humanoid, passages, warnings, bounds, ray, previous)
+local function passageGoal(root, passages, walls, warnings, bounds, ray, session)
     if #passages == 0 then return end
     local origin = root.Position
     local floor = workspace:Raycast(origin, Vector3.new(0, -18, 0), ray)
     if not floor or floor.Normal.Y < .65 then return end
-    local maxDistance = math.min(65, humanoid.WalkSpeed * 1.8)
-    local bestPart, bestTarget, bestCost
+
+    -- The green marker refines the predicted wall area. Keep live warning checks.
+    local liveRoute = {}
+    for _, warning in ipairs(warnings) do
+        if not (warning.projected and warning.swampWall) then
+            liveRoute[#liveRoute + 1] = warning
+        end
+    end
+    local bestPart, bestTarget, bestDirection, bestCost
     for _, part in ipairs(passages) do
         local center = part.Position
         local distance = horizontalDistance(origin, center)
-        local cost = distance - (part == previous and 4 or 0)
-        if distance <= maxDistance and (not bestCost or cost < bestCost)
+        local cost = distance - (part == session.passage and 8 or 0)
+        if distance <= 65 and (not bestCost or cost < bestCost)
             and inCage(center, bounds, 4) and math.abs(center.Y - floor.Position.Y) <= 2 then
             local target = Vector3.new(center.X, origin.Y, center.Z)
+            local direction = part == session.passage and session.passageDirection or nil
+            if not direction then
+                local closest
+                for _, wall in ipairs(walls) do
+                    local axis = wall.CFrame.RightVector
+                    local normal = Vector3.new(axis.X, 0, axis.Z)
+                    local offset = target - wall.Position
+                    local planeDistance = math.abs(offset:Dot(normal))
+                    local along = math.abs(offset:Dot(wall.CFrame.LookVector))
+                    local rootOffset = origin - target
+                    if normal.Magnitude >= .98 and planeDistance <= 2 and along <= 26
+                        and math.abs(rootOffset:Dot(wall.CFrame.LookVector)) <= 2.5
+                        and (not closest or along < closest) then
+                        closest = along
+                        direction = rootOffset:Dot(normal) >= 0 and -normal.Unit or normal.Unit
+                    end
+                end
+            end
+
+            -- First align to the green center, then step across the wall plane.
+            if direction then target = target + direction * 3 end
             local travel = target - origin
-            if not threatened(target, warnings, TRIGGER_MARGIN)
-                and not threatened(origin:Lerp(target, .5), warnings, TRIGGER_MARGIN)
-                and not crossesPortal(origin, target, warnings, TRIGGER_MARGIN)
-                and (distance <= 1 or not workspace:Raycast(origin, travel, ray)) then
-                local landing = workspace:Raycast(center + Vector3.new(0, 4, 0), Vector3.new(0, -8, 0), ray)
+            if inCage(target, bounds, 4)
+                and not threatened(target, liveRoute, TRIGGER_MARGIN)
+                and not threatened(origin:Lerp(target, .5), liveRoute, TRIGGER_MARGIN)
+                and not crossesPortal(origin, target, liveRoute, TRIGGER_MARGIN)
+                and (travel.Magnitude <= 1 or not workspace:Raycast(origin, travel, ray)) then
+                local landing = workspace:Raycast(target + Vector3.new(0, 4, 0), Vector3.new(0, -22, 0), ray)
                 if landing and landing.Normal.Y >= .65 and math.abs(landing.Position.Y - floor.Position.Y) <= 2 then
-                    bestPart, bestTarget, bestCost = part, target, cost
+                    bestPart, bestTarget, bestDirection, bestCost = part, target, direction, cost
                 end
             end
         end
     end
-    return bestPart, bestTarget
+    return bestPart, bestTarget, bestDirection
 end
 
 local function cosmicShape(part)
@@ -601,7 +631,7 @@ local function startFight()
                         end
                     end
                 end
-                local circles, passages = {}, {}
+                local circles, passages, swampWalls = {}, {}, {}
                 for _, part in ipairs(session.fxParts) do
                     if part.Parent then
                         local bossFX = folder and part:IsDescendantOf(folder)
@@ -609,6 +639,12 @@ local function startFight()
                         local color = part.Color
                         if swamp and swampPassage(part) then
                             passages[#passages + 1] = part
+                        end
+                        if swamp and part.Transparency < .98 and math.abs(size.X - .5) <= .25
+                            and math.abs(size.Y - 2.1) <= .4 and math.abs(size.Z - 29.6) <= 1
+                            and math.abs(part.CFrame.UpVector.Y) >= .98
+                            and horizontalDistance(part.Position, root.Position) <= 100 then
+                            swampWalls[#swampWalls + 1] = part
                         end
                         local smallGround = bossFX and part.Transparency < .98
                             and color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35
@@ -746,10 +782,10 @@ local function startFight()
                 end
                 urgent = gravityPart or urgent
                 if gravityCenter then danger = true end
-                local passage, passageTarget
+                local passage, passageTarget, passageDirection
                 if swamp and insideArena and not urgent and #passages > 0 then
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    passage, passageTarget = passageGoal(root, humanoid, passages, areas, bounds, ray, session.passage)
+                    passage, passageTarget, passageDirection = passageGoal(root, passages, swampWalls, areas, bounds, ray, session)
                 end
                 if passage then
                     local oldTarget = session.passageTarget
@@ -759,13 +795,14 @@ local function startFight()
                         session.passageTarget = passageTarget
                         session.passageRefresh = now + .5
                     end
-                    session.passage = passage
+                    session.passage, session.passageDirection = passage, passageDirection
                     session.walking, session.runGoal = false, nil
-                    message = horizontalDistance(root.Position, passageTarget) <= 2
-                        and "No corredor verde" or "Indo para o corredor verde"
+                    message = passageDirection and "Atravessando pelo vão verde"
+                        or (horizontalDistance(root.Position, passageTarget) <= 2
+                            and "Alinhado ao vão verde" or "Alinhando ao vão verde")
                 else
                     if session.passage then
-                        session.passage, session.passageTarget = nil, nil
+                        session.passage, session.passageTarget, session.passageDirection = nil, nil, nil
                         humanoid:MoveTo(root.Position)
                     end
                     local followEdge = false
@@ -862,7 +899,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V49] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V50] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1760,7 +1797,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V49] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V50] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1869,7 +1906,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V49] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V50] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1896,14 +1933,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V49] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V50] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V49] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V50] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1964,7 +2001,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V49] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V50] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1975,7 +2012,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V49] " .. problem) end
+                if problem then warn("[Inventário V50] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2023,7 +2060,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V49] " .. detail) end
+                if not ok then warn("[Auto Coletar V50] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -2083,7 +2120,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V49", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V50", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -2197,7 +2234,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V49] " .. tostring(reason or count))
+        warn("[Inventário V50] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2225,7 +2262,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V49] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V50] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2254,7 +2291,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V49] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V50] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
