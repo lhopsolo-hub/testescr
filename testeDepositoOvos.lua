@@ -1,5 +1,5 @@
-print("[Auto Chocar V4] Iniciando")
-local player = assert(game:GetService("Players").LocalPlayer, "[Auto Chocar V4] Execute no cliente do jogo")
+print("[Auto Chocar V5] Iniciando")
+local player = assert(game:GetService("Players").LocalPlayer, "[Auto Chocar V5] Execute no cliente do jogo")
 local runService = game:GetService("RunService")
 
 local function ownPen()
@@ -32,7 +32,7 @@ local function promptPosition(prompt)
     if host:IsA("Model") then return host:GetPivot().Position end
 end
 
-local playerGui = assert(player:WaitForChild("PlayerGui", 8), "[Auto Chocar V4] PlayerGui indisponível")
+local playerGui = assert(player:WaitForChild("PlayerGui", 8), "[Auto Chocar V5] PlayerGui indisponível")
 local previous = playerGui:FindFirstChild("TesteChocarOvos")
 if previous then previous:Destroy() end
 
@@ -51,14 +51,14 @@ button.TextSize = 14
 local size = Instance.new("UISizeConstraint")
 size.MaxSize = Vector2.new(300, 60)
 size.Parent = button
-button.Text = "Auto Chocar V4 ligado · toque para pausar"
+button.Text = "Auto Chocar V5 ligado · toque para pausar"
 button.TextWrapped = true
 button.Parent = gui
 gui.Parent = playerGui
-print("[Auto Chocar V4] Painel criado")
+print("[Auto Chocar V5] Painel criado")
 
 local enabled, lastInput = true, nil
-local preferButton = true
+local BUTTON_INTERVAL = .08
 
 local function nearestPrompt(pen, root)
     local nearest, bestDistance
@@ -97,9 +97,8 @@ local function hatchBatch(root, character, pen)
 
     local count, started = 0, os.clock()
     while active() do
-        local face = type(firesignal) == "function" and hatchFace()
-        local prompt = (not preferButton or not face) and nearestPrompt(pen, root)
-        if not prompt and not face then break end
+        local prompt = nearestPrompt(pen, root)
+        if not prompt then break end
 
         local before = tonumber(player:GetAttribute("PenEggs"))
         local original = penTimes()
@@ -130,47 +129,80 @@ local function hatchBatch(root, character, pen)
             end
         end
 
-        local method, sentAt
-        local function tryButton()
-            if not face or hatchFace() ~= face then return end
-            method, sentAt = "botão", os.clock()
-            if pcall(firesignal, face.Activated, lastInput, 1) then
-                waitConfirmation(.5)
+        local sentAt = os.clock()
+        if pcall(function() prompt:InputHoldBegin() end) then
+            local releaseAt = sentAt + math.max(.05, prompt.HoldDuration)
+            while active() and prompt.Parent and not confirmed and os.clock() < releaseAt do
+                runService.Heartbeat:Wait()
             end
+            pcall(function() prompt:InputHoldEnd() end)
+            waitConfirmation(1.5)
         end
-
-        if preferButton then tryButton() end
-        if not confirmed and active() then
-            prompt = prompt or nearestPrompt(pen, root)
-            if prompt and prompt.Parent and pcall(function() prompt:InputHoldBegin() end) then
-                method, sentAt = "prompt", os.clock()
-                local releaseAt = sentAt + math.max(.05, prompt.HoldDuration)
-                while active() and prompt.Parent and not confirmed and os.clock() < releaseAt do
-                    runService.Heartbeat:Wait()
-                end
-                pcall(function() prompt:InputHoldEnd() end)
-                waitConfirmation(1.5)
-            end
-        end
-        if not preferButton and not confirmed and active() then tryButton() end
 
         countChanged:Disconnect()
         timesChanged:Disconnect()
         if not confirmed then
-            return count, active() and ("Sem confirmação · " .. (method or "sem interação")) or nil
+            return count, active() and "Sem confirmação · prompt" or nil
         end
         count = count + 1
-        preferButton = method == "botão"
-        print(string.format("[Auto Chocar V4] Ovo %d · %s · %.0f ms",
-            count, method, (os.clock() - sentAt) * 1000))
+        print(string.format("[Auto Chocar V5] Ovo %d · prompt · %.0f ms",
+            count, (os.clock() - sentAt) * 1000))
     end
     return count, nil, os.clock() - started
+end
+
+local function rapidHatch(root, character, pen)
+    local function active()
+        local carrying = player:GetAttribute("Carrying")
+        return gui.Parent and enabled and root.Parent == character and player.Character == character
+            and ownPen() == pen and carrying ~= true and (tonumber(carrying) or 0) == 0
+    end
+
+    local started, total, attempts = os.clock(), 0, 0
+    while active() and hatchFace() do
+        local before = tonumber(player:GetAttribute("PenEggs"))
+        local original = penTimes()
+        local deadline = os.clock() + .8
+        while active() and os.clock() < deadline do
+            local face = hatchFace()
+            if not face then break end
+            if not pcall(firesignal, face.Activated, lastInput, 1) then break end
+            attempts = attempts + 1
+            task.wait(BUTTON_INTERVAL)
+        end
+        local current = tonumber(player:GetAttribute("PenEggs"))
+        local removed = before and current and math.max(0, before - current) or 0
+        local times = original and penTimes()
+        if times then
+            local missing = 0
+            for timestamp, amount in pairs(original) do
+                missing = missing + math.max(0, amount - (times[timestamp] or 0))
+            end
+            removed = math.max(removed, missing)
+        end
+        total = total + removed
+        if removed == 0 then break end
+    end
+    if attempts > 0 then
+        print(string.format("[Auto Chocar V5] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            attempts, total, os.clock() - started))
+    end
+    return total
+end
+
+local function runHatch(root, character, pen)
+    local started, rapidCount = os.clock(), 0
+    if type(firesignal) == "function" then
+        rapidCount = rapidHatch(root, character, pen)
+    end
+    local promptCount, problem = hatchBatch(root, character, pen)
+    return rapidCount + promptCount, problem, os.clock() - started
 end
 
 button.Activated:Connect(function(input)
     lastInput = input
     enabled = not enabled
-    button.Text = enabled and "Auto Chocar V4 ligado · toque para pausar"
+    button.Text = enabled and "Auto Chocar V5 ligado · toque para pausar"
         or "Pausado · toque para retomar"
 end)
 
@@ -182,10 +214,10 @@ task.spawn(function()
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local pen = enabled and root and ownPen()
         if pen then
-            local ok, count, problem, elapsed = pcall(hatchBatch, root, character, pen)
+            local ok, count, problem, elapsed = pcall(runHatch, root, character, pen)
             if not gui.Parent then break end
             if not ok then
-                warn("[Auto Chocar V4] " .. tostring(count))
+                warn("[Auto Chocar V5] " .. tostring(count))
                 count, problem = 0, "Falha · confira o console"
             end
             total = total + count
@@ -193,13 +225,13 @@ task.spawn(function()
                 print(string.format("[Auto Chocar] %d ovo(s) em %.2f s", count, elapsed or 0))
             end
             if enabled then
-                button.Text = string.format("Auto Chocar V4 · %d chocado(s)\n%s", total,
+                button.Text = string.format("Auto Chocar V5 · %d chocado(s)\n%s", total,
                     problem or "Aguardando ovos prontos ao alcance")
             end
             if problem then interval = .35 end
         elseif enabled then
-            button.Text = root and "Auto Chocar V4 · aguardando cercado"
-                or "Auto Chocar V4 · aguardando personagem"
+            button.Text = root and "Auto Chocar V5 · aguardando cercado"
+                or "Auto Chocar V5 · aguardando personagem"
         end
         task.wait(interval)
     end
