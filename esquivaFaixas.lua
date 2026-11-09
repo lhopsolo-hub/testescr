@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V59", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V60", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -87,7 +87,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V59] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V60] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -104,7 +104,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V59] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V60] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -125,7 +125,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V59] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V60] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -873,7 +873,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V59] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V60] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1008,7 +1008,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V59] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V60] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1938,47 +1938,49 @@ end
 
 local placementPoints = setmetatable({}, { __mode = "k" })
 
-local function performPlacement(character, root, pen, name, previousTools, previousSlots, input, clicks, placed, item)
+local function performPlacement(character, root, pen, name, previousTools, previousSlots, input, clicks, placed, item, stayHere)
     local nearest, distance
-    for _, item in ipairs(pen:GetChildren()) do
-        local point = item:IsA("BasePart") and item.Position or (item:IsA("Model") and item:GetPivot().Position)
-        if point then
-            local delta = Vector3.new(point.X - root.Position.X, 0, point.Z - root.Position.Z)
-            if not distance or delta.Magnitude < distance then nearest, distance = delta, delta.Magnitude end
+    local marked = not stayHere and not depositing and placementPoints[pen]
+    if not stayHere then
+        for _, item in ipairs(pen:GetChildren()) do
+            local point = item:IsA("BasePart") and item.Position or (item:IsA("Model") and item:GetPivot().Position)
+            if point then
+                local delta = Vector3.new(point.X - root.Position.X, 0, point.Z - root.Position.Z)
+                if not distance or delta.Magnitude < distance then nearest, distance = delta, delta.Magnitude end
+            end
         end
-    end
-    -- Cercado vazio: procure um piso pertencente ao lote, na direção da entrada.
-    if not nearest and pen.Parent then
-        local plot = pen.Parent
-        local forward = root.CFrame.LookVector
-        forward = Vector3.new(forward.X, 0, forward.Z)
-        local ray = RaycastParams.new()
-        ray.FilterType = Enum.RaycastFilterType.Exclude
-        ray.FilterDescendantsInstances = { character }
-        ray.RespectCanCollide = true
-        if forward.Magnitude > 0.1 then
-            for _, step in ipairs({ 12, 9, 6 }) do
-                local delta = forward.Unit * step
-                local point = root.Position + delta
-                local floor = workspace:Raycast(point + Vector3.new(0, 3, 0), Vector3.new(0, -12, 0), ray)
-                if floor and floor.Instance:IsDescendantOf(plot) and floor.Normal.Y >= 0.65
-                    and not workspace:Raycast(root.Position, delta, ray) then
-                    nearest, distance = delta, step
-                    break
+        -- Cercado vazio: procure um piso pertencente ao lote, na direção da entrada.
+        if not nearest and pen.Parent then
+            local plot = pen.Parent
+            local forward = root.CFrame.LookVector
+            forward = Vector3.new(forward.X, 0, forward.Z)
+            local ray = RaycastParams.new()
+            ray.FilterType = Enum.RaycastFilterType.Exclude
+            ray.FilterDescendantsInstances = { character }
+            ray.RespectCanCollide = true
+            if forward.Magnitude > 0.1 then
+                for _, step in ipairs({ 12, 9, 6 }) do
+                    local delta = forward.Unit * step
+                    local point = root.Position + delta
+                    local floor = workspace:Raycast(point + Vector3.new(0, 3, 0), Vector3.new(0, -12, 0), ray)
+                    if floor and floor.Instance:IsDescendantOf(plot) and floor.Normal.Y >= 0.65
+                        and not workspace:Raycast(root.Position, delta, ray) then
+                        nearest, distance = delta, step
+                        break
+                    end
                 end
             end
         end
-    end
-    local marked = not depositing and placementPoints[pen]
-    if marked then
-        local delta = marked - root.Position
-        nearest, distance = Vector3.new(delta.X, 0, delta.Z), horizontalDistance(root.Position, marked)
+        if marked then
+            local delta = marked - root.Position
+            nearest, distance = Vector3.new(delta.X, 0, delta.Z), horizontalDistance(root.Position, marked)
+        end
     end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     local pending = "Interior do cercado não confirmado"
     local function eligible()
         return gui.Parent and (depositing or (auto and autoDeposit)) and root.Parent and player.Character == character
-            and ownPen() == pen and not carryingEgg()
+            and ownPen() == pen and not carryingEgg() and (not stayHere or autoDeposit)
     end
     local function confirm(seconds)
         waitFor(root, seconds, function() return placed() or not eligible() end, .03)
@@ -2004,9 +2006,11 @@ local function performPlacement(character, root, pen, name, previousTools, previ
         end
         return false
     end
-    if humanoid and nearest and distance <= (marked and 120 or 30) and eligible() then
-        collectionStatus.Text = marked and "Indo ao ponto salvo no celeiro..." or "Entrando no seu cercado..."
-        local target = marked or (root.Position + nearest)
+    if humanoid and (stayHere or (nearest and distance <= (marked and 120 or 30))) and eligible() then
+        if not stayHere then
+            collectionStatus.Text = marked and "Indo ao ponto salvo no celeiro..." or "Entrando no seu cercado..."
+        end
+        local target = stayHere and root.Position or marked or (root.Position + nearest)
         local function walkTo(point, seconds, tolerance)
             if not eligible() then return false end
             if horizontalDistance(root.Position, point) <= tolerance then return true end
@@ -2073,7 +2077,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V59] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V60] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2083,7 +2087,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
     return false, pending .. ". Colocação não confirmada."
 end
 
-local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks, item)
+local function placeInPen(character, root, pen, name, previousTools, previousSlots, input, clicks, item, stayHere)
     local before = tonumber(player:GetAttribute("PenEggs"))
     if not before then return false, "Contador do cercado indisponível." end
     local original = penTimes()
@@ -2109,7 +2113,7 @@ local function placeInPen(character, root, pen, name, previousTools, previousSlo
     local countChanged = player:GetAttributeChangedSignal("PenEggs"):Connect(placed)
     local timesChanged = player:GetAttributeChangedSignal("PenEggTimes"):Connect(placed)
     local ok, result, reason = pcall(performPlacement, character, root, pen, name,
-        previousTools, previousSlots, input, clicks, placed, item)
+        previousTools, previousSlots, input, clicks, placed, item, stayHere)
     countChanged:Disconnect()
     timesChanged:Disconnect()
     if not ok then error(result) end
@@ -2142,17 +2146,18 @@ local function inventoryEgg(character, expectedName, previousTools)
     end
 end
 
-local function depositInventory(character, root, pen, input, clicks)
+local function depositInventory(character, root, pen, input, clicks, stayHere)
     local placed = 0
     while gui.Parent and (depositing or (auto and autoDeposit)) and root.Parent
-        and player.Character == character and ownPen() == pen and not carryingEgg() do
+        and player.Character == character and ownPen() == pen and not carryingEgg()
+        and (not stayHere or autoDeposit) do
         local item = inventoryEgg(character)
         if not item then return placed end
         local started = os.clock()
-        local ok, reason = placeInPen(character, root, pen, item.name, {}, {}, input, clicks, item)
+        local ok, reason = placeInPen(character, root, pen, item.name, {}, {}, input, clicks, item, stayHere)
         if not ok then return placed, reason end
         placed = placed + 1
-        local remaining = .25 - (os.clock() - started)
+        local remaining = (stayHere and .18 or .25) - (os.clock() - started)
         if remaining > 0 then task.wait(remaining) end
     end
     return placed
@@ -2182,7 +2187,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V59] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V60] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2209,14 +2214,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V59] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V60] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V59] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V60] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2252,7 +2257,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V59] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V60] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2263,7 +2268,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V59] " .. problem) end
+                if problem then warn("[Inventário V60] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2350,7 +2355,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V59] " .. detail) end
+                if not ok then warn("[Auto Coletar V60] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2459,7 +2464,7 @@ local shell = make("Frame", gui, {
 round(shell, 12)
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(16, 4), Size = UDim2.new(1, -155, 0, 40),
-    Text = "Central de Ovos  /  V59", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "Central de Ovos  /  V60", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
@@ -2537,12 +2542,14 @@ local function settingsPage(heading, description)
     return page
 end
 
-local penPage = settingsPage("Colocação", "Marque um ponto dentro do celeiro. A coleta aguarda o depósito antes de sair novamente.")
+local penPage = settingsPage("Colocação", "Dentro do cercado, ligue Auto Colocar para depositar o inventário. O ponto salvo serve para a volta da coleta.")
 local hatchPage = settingsPage("Eclosão", "Entre rodadas, tenta chocar os ovos prontos que estiverem ao alcance no seu cercado.")
 local looksPage = settingsPage("Aparência", "Arraste pelo título para mover a central.")
 local penToggle = arcadeButton(penPage, "Auto Colocar · OFF", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
 local hatchToggle = arcadeButton(hatchPage, "Auto Chocar · OFF", UDim2.fromOffset(12, 111), UDim2.new(1, -24, 0, 32))
-penToggle.Activated:Connect(function()
+local depositInput, depositClicks
+penToggle.Activated:Connect(function(input, clicks)
+    depositInput, depositClicks = input, clicks
     autoDeposit = not autoDeposit
     penToggle.Text = autoDeposit and "Auto Colocar · ON" or "Auto Colocar · OFF"
 end)
@@ -2582,7 +2589,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V59] " .. tostring(reason or count))
+        warn("[Inventário V60] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2590,6 +2597,38 @@ depositNow.Activated:Connect(function(input, clicks)
         depositNow.Text = string.format("%d colocado(s) · ponto salvo", count)
     end
 end)
+task.spawn(function()
+    local retryAt = 0
+    while gui.Parent do
+        if autoDeposit and not auto and not looping and not collecting and not active
+            and not depositing and not hatching and not carryingEgg() and os.clock() >= retryAt then
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local pen = root and ownPen()
+            if pen and inventoryEgg(character) then
+                depositing = true
+                depositNow.Text = "Depositando inventário..."
+                local ran, count, reason = pcall(depositInventory, character, root, pen,
+                    depositInput, depositClicks, true)
+                depositing = false
+                if not gui.Parent then break end
+                if not autoDeposit then
+                    depositNow.Text = "Colocar ovos do inventário"
+                elseif not ran or reason then
+                    warn("[Depósito V60] " .. tostring(ran and reason or count))
+                    depositNow.Text = "Entre no cercado · aguardando confirmação"
+                    retryAt = os.clock() + 3
+                else
+                    depositNow.Text = string.format("%d ovo(s) depositado(s)", count)
+                end
+            end
+        elseif not autoDeposit then
+            retryAt = 0
+        end
+        task.wait(.25)
+    end
+end)
+
 local hatchNow = arcadeButton(hatchPage, "Chocar ovos prontos", UDim2.fromOffset(12, 151), UDim2.new(1, -24, 0, 36))
 hatchNow.Activated:Connect(function(input, clicks)
     if hatching then return end
@@ -2610,7 +2649,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V59] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V60] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2639,7 +2678,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V59] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V60] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
@@ -2667,7 +2706,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V59"
+    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V60"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
     content.Visible = not compact
     zoomIn.Visible, zoomOut.Visible = not compact, not compact
