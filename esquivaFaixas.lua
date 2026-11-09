@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V42", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V43", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -110,7 +110,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V42] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V43] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -182,6 +182,7 @@ local function projectWarnings(tracked, now)
                             frame = warning.frame + warning.velocity * ((seconds + previousTime) / 2),
                             size = warning.size + warning.growth * seconds + sweep,
                             projected = true,
+                            portal = warning.swampWall,
                         })
                         previousTime = seconds
                     end
@@ -529,14 +530,21 @@ local function startFight()
                             and size.Y <= 1 and math.abs(size.X - 33) <= 1 and math.abs(size.Z - 26) <= 1
                             and math.abs(part.CFrame.UpVector.Y) >= .98
                             and math.abs(part.Position.Y - root.Position.Y) <= 16
+                        local swampWall = swamp and bossFX and part.Transparency < .98
+                            and size.Y <= 1 and math.abs(span - 30) <= 1.5
+                            and math.min(size.X, size.Z) >= 2 and math.min(size.X, size.Z) <= 18
+                            and math.abs(part.CFrame.UpVector.Y) >= .98
+                            and math.abs(part.Position.Y - root.Position.Y) <= 16
+                            and color.R > .45 and color.R > color.G * 1.35 and color.R > color.B * 1.35
                         shape = shape or cosmicWarning or (swampWarning and "rectangle")
-                        if not (pink and cosmicWarning == "circle") and (shape or beam or smallGround or isWarning(part, root.Position)) then
+                        if not (pink and cosmicWarning == "circle") and (shape or beam or swampWall or smallGround or isWarning(part, root.Position)) then
                             local warning = updateWarning(session.warnings[part], part, now)
                             warning.shape = shape
                             warning.priority = cosmicWarning == "rectangle" or swampWarning
                             warning.gravity = cosmicWarning == "circle" and not pink
-                            warning.portal = beam
-                            if beam then warning.static = true end
+                            warning.portal = beam or swampWall
+                            warning.swampWall = swampWall
+                            if beam or swampWall then warning.static = true end
                             if smallGround then warning.static = true end
                             if shape then
                                 warning.static = true
@@ -631,7 +639,7 @@ local function startFight()
                 session.urgent = urgent
                 if session.walking and (not insideArena or not goal or not inCage(goal, bounds, 4)
                     or threatened(goal, areas, TRIGGER_MARGIN) or now >= session.runUntil
-                    or switchToDodge or (cosmic and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
+                    or switchToDodge or ((cosmic or swamp) and crossesPortal(root.Position, goal, areas, TRIGGER_MARGIN)) or goalDistance <= 5) then
                     if not insideArena then humanoid:MoveTo(root.Position) end
                     session.walking, session.runGoal = false, nil
                 end
@@ -644,7 +652,7 @@ local function startFight()
                     if gravityCenter then
                         delta = safeStep(root, areas, ray, nil, bounds, 5, false, nil, gravityCenter, true)
                     elseif (desert or ice or cosmic or swamp) and danger then
-                        delta = safeStep(root, areas, ray, nil, bounds, 1.75, false, nil, nil, cosmic)
+                        delta = safeStep(root, areas, ray, nil, bounds, 1.75, false, nil, nil, cosmic or swamp)
                     elseif not danger then
                         local heading = session.heading or Vector3.new(1, 0, 0)
                         if swamp then
@@ -653,18 +661,18 @@ local function startFight()
                                 minZ = bounds.minZ + 8, maxZ = bounds.maxZ - 8,
                             }
                             if bossPosition then
-                                delta = safeStep(root, areas, ray, bossPosition, innerBounds, EXIT_MARGIN, true)
-                                    or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true)
+                                delta = safeStep(root, areas, ray, bossPosition, innerBounds, EXIT_MARGIN, true, nil, nil, true)
+                                    or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, nil, nil, true)
                             end
-                            delta = delta or safeStep(root, areas, ray, nil, innerBounds, EXIT_MARGIN, true, heading)
+                            delta = delta or safeStep(root, areas, ray, nil, innerBounds, EXIT_MARGIN, true, heading, nil, true)
                         end
-                        delta = delta or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading, nil, cosmic)
-                            or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading, nil, cosmic)
+                        delta = delta or safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
+                            or safeStep(root, areas, ray, nil, bounds, EXIT_MARGIN, true, heading, nil, cosmic or swamp)
                     else
                         delta = safeStep(root, areas, ray, bossPosition, bounds, EXIT_MARGIN, false)
                     end
                     if not delta and danger and not gravityCenter then
-                        delta = safeStep(root, areas, ray, nil, bounds, 2.5, false, nil, nil, cosmic)
+                        delta = safeStep(root, areas, ray, nil, bounds, 2.5, false, nil, nil, cosmic or swamp)
                     end
                     if not delta and cosmic then
                         delta = safeStep(root, areas, ray, nil, bounds, .75, false, nil, gravityCenter, true)
@@ -700,7 +708,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V42] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V43] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -961,11 +969,23 @@ local function signalFace(face, input, clicks)
     return ok, ok and nil or tostring(err)
 end
 
+local function eggZone(egg, prompt)
+    local id = tonumber(egg:GetAttribute("Zone"))
+    if id then return id end
+    prompt = prompt or egg:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not prompt then return end
+    local name = prompt.ObjectText:gsub("Â", "a"):gsub("â", "a"):lower()
+    local point = promptPosition(prompt)
+    if name:find("ovo do pantano", 1, true) and point and inCage(point, mappedBounds[10], 0) then
+        return 10
+    end
+end
+
 local function nearestEggZone(position)
     local folder = workspace:FindFirstChild("Eggs")
     local nearest, distance
     for _, egg in ipairs(folder and folder:GetChildren() or {}) do
-        local zoneNumber = tonumber(egg:GetAttribute("Zone"))
+        local zoneNumber = eggZone(egg)
         local point = egg:IsA("BasePart") and egg.Position or (egg:IsA("Model") and egg:GetPivot().Position)
         if zoneNumber and point then
             local gap = horizontalDistance(position, point)
@@ -1052,7 +1072,7 @@ local function collectEgg(egg, input, clicks, fromAuto)
     local heldPrompt
     local ok, message, finished, eggName = pcall(function()
         local eggs = workspace:FindFirstChild("Eggs")
-        local zoneNumber = tonumber(egg:GetAttribute("Zone"))
+        local zoneNumber = eggZone(egg)
         if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or zoneNumber > 12 then
             return "Ovo indisponível. Escolha outro."
         end
@@ -1187,13 +1207,15 @@ end
 
 local lastSignature, lastEggObjects = nil, {}
 local function refreshEggs()
-    local rows = {}
+    local rows, loaded = {}, 0
     local zoneNumber = selectedZone
     local eggs = workspace:FindFirstChild("Eggs")
     local rarityNames = { [1] = "Comum", [2] = "Raro", [3] = "Épico", [4] = "Lendário" }
     for _, object in ipairs(eggs and eggs:GetChildren() or {}) do
         local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if tonumber(object:GetAttribute("Zone")) == zoneNumber and prompt and prompt.Enabled then
+        local matches = eggZone(object, prompt) == zoneNumber
+        if matches then loaded = loaded + 1 end
+        if matches and prompt and prompt.Enabled then
             local value = field(object, { "EggRarity", "Rarity" })
             local numeric = tonumber(value)
             local rarity = numeric and (rarityNames[numeric] or ("Raridade " .. numeric))
@@ -1224,17 +1246,19 @@ local function refreshEggs()
         if row.object ~= lastEggObjects[index] then changed = true end
         keys[index] = row.name .. "|" .. row.rarity .. "|" .. row.image .. "|" .. row.location
     end
-    local signature = zoneNumber .. ":" .. #rows .. ":" .. table.concat(keys, "\n")
+    local signature = zoneNumber .. ":" .. loaded .. ":" .. #rows .. ":" .. table.concat(keys, "\n")
     if lastSignature == signature and not changed then return end
     lastSignature, lastEggObjects = signature, eggObjects
     for _, item in ipairs(list:GetChildren()) do
         if not item:IsA("UIListLayout") then item:Destroy() end
     end
     local areaName = zoneNumber == 10 and "PÂNTANO" or ("ÁREA " .. zoneNumber)
-    eggsTitle.Text = "OVOS · " .. areaName .. " (" .. #rows .. ")"
+    eggsTitle.Text = "OVOS · " .. areaName .. (zoneNumber == 10
+        and string.format(" (%d/%d ativos)", #rows, loaded) or (" (" .. #rows .. ")"))
     if #rows == 0 then
         make("TextLabel", list, {
-            Text = zoneNumber == 10 and "Nenhum ovo do Pântano carregado. Vá até a área para atualizar a lista."
+            Text = zoneNumber == 10 and (loaded > 0 and "Ovos do Pântano carregados, mas sem interação ativa."
+                or "Nenhum ovo do Pântano carregado. Vá até a área para atualizar a lista.")
                 or "Nenhum ovo desta área carregado.", Size = UDim2.new(1, -4, 0, 62),
             BackgroundTransparency = 1, TextWrapped = true, TextSize = 12,
             TextColor3 = Color3.fromRGB(198, 211, 231), Font = Enum.Font.Gotham,
@@ -1548,7 +1572,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V42] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V43] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1657,7 +1681,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V42] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V43] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1684,14 +1708,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V42] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V43] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V42] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V43] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1707,7 +1731,7 @@ local function bestEgg(root, zoneNumber)
     local selected, rank, distance
     for _, egg in ipairs(folder and folder:GetChildren() or {}) do
         local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if tonumber(egg:GetAttribute("Zone")) == zoneNumber and prompt and prompt.Enabled then
+        if eggZone(egg, prompt) == zoneNumber and prompt and prompt.Enabled then
             local position = promptPosition(prompt)
             local rarity = tonumber(egg:GetAttribute("EggRarity") or egg:GetAttribute("Rarity")) or 0
             local d = position and (position - root.Position).Magnitude
@@ -1740,7 +1764,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V42] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V43] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1751,7 +1775,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V42] " .. problem) end
+                if problem then warn("[Inventário V43] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1799,7 +1823,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V42] " .. detail) end
+                if not ok then warn("[Auto Coletar V43] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1859,7 +1883,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V42", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V43", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1973,7 +1997,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V42] " .. tostring(reason or count))
+        warn("[Inventário V43] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2001,7 +2025,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V42] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V43] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2030,7 +2054,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V42] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V43] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
