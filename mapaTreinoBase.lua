@@ -35,6 +35,81 @@ local output = make("TextBox", panel, {
     BackgroundColor3 = Color3.fromRGB(12, 17, 26),
 })
 
+local function trackMotion(character)
+    local channels = {}
+    local function channel(name, minimum, read)
+        table.insert(channels, { name = name, minimum = minimum, read = read, values = {} })
+    end
+    local function angles(name, read)
+        local row = {}
+        for axis, suffix in ipairs({ "X", "Y", "Z" }) do
+            row[axis] = { name = name .. "." .. suffix, minimum = .1, values = {} }
+            table.insert(channels, row[axis])
+        end
+        -- Lê a rotação uma vez por junta a cada amostra.
+        row[1].read = function(index)
+            local x, y, z = read():ToOrientation()
+            row[2].values[index], row[3].values[index] = y, z
+            return x
+        end
+    end
+
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        channel("Raiz.altura", .08, function() return root.Position.Y end)
+        angles("Raiz.rotação", function() return root.CFrame end)
+    end
+    for _, joint in ipairs(character and character:GetDescendants() or {}) do
+        if joint:IsA("Motor6D") then
+            for _, property in ipairs({ "Transform", "C0", "C1" }) do
+                angles(joint.Name .. "." .. property, function() return joint[property] end)
+            end
+        end
+    end
+    return channels
+end
+
+local function summarizeMotion(channels, timestamps)
+    local ranked = {}
+    for _, row in ipairs(channels) do
+        local low, high = math.huge, -math.huge
+        for _, value in ipairs(row.values) do
+            low, high = math.min(low, value), math.max(high, value)
+        end
+        local span = high - low
+        if span >= row.minimum then
+            local peaks, armed = {}, false
+            for index, value in ipairs(row.values) do
+                local t = timestamps[index]
+                if value <= low + .35 * span then armed = true end
+                if armed and value >= low + .65 * span then
+                    if #peaks == 0 or t - peaks[#peaks] >= .25 then table.insert(peaks, t) end
+                    armed = false
+                end
+            end
+            table.insert(ranked, { name = row.name, span = span, score = span / row.minimum, peaks = peaks })
+        end
+    end
+    table.sort(ranked, function(a, b)
+        if #a.peaks ~= #b.peaks then return #a.peaks > #b.peaks end
+        if a.score ~= b.score then return a.score > b.score end
+        return a.name < b.name
+    end)
+    local lines = { string.format("%d canais | %d amostras | picos candidatos, não contagem confirmada de flexões",
+        #channels, #timestamps) }
+    for index = 1, math.min(#ranked, 4) do
+        local row = ranked[index]
+        local times = {}
+        for _, t in ipairs(row.peaks) do table.insert(times, string.format("%.3f", t)) end
+        local period = #row.peaks > 1 and (row.peaks[#row.peaks] - row.peaks[1]) / (#row.peaks - 1)
+        table.insert(lines, string.format("%s | amplitude=%.3f | picos=%d | período médio=%s | t(s)=%s",
+            row.name, row.span, #row.peaks, period and string.format("%.3fs", period) or "-",
+            table.concat(times, ", ")))
+    end
+    if #ranked == 0 then table.insert(lines, "Nenhum movimento acima do limiar nas juntas ou na raiz.") end
+    return table.concat(lines, "\n")
+end
+
 local running, report = false, nil
 local function measure()
     local stats, connections = {}, {}
@@ -119,9 +194,20 @@ local function measure()
         for _, track in ipairs(animator:GetPlayingAnimationTracks()) do watch(track) end
     end
 
+    local motion, timestamps = trackMotion(character), {}
     while gui.Parent and os.clock() - started < 20 do
-        button.Text = string.format("Medindo · %.0f s restantes", math.max(0, 20 - (os.clock() - started)))
-        task.wait(.25)
+        if player.Character ~= character then
+            record("PERSONAGEM TROCOU | medição encerrada")
+            break
+        end
+        local elapsed = os.clock() - started
+        table.insert(timestamps, elapsed)
+        local index = #timestamps
+        for _, row in ipairs(motion) do
+            if row.read then row.values[index] = row.read(index) end
+        end
+        button.Text = string.format("Medindo · %.0f s restantes", math.max(0, 20 - elapsed))
+        task.wait(.05)
     end
     for _, connection in ipairs(connections) do connection:Disconnect() end
     if not gui.Parent then return end
@@ -150,9 +236,10 @@ local function measure()
     end
     if #lines == 0 then lines[1] = "Nenhuma mudança numérica detectada." end
     report = table.concat({
-        string.format("MAPA DO TREINO V2 | %.2fs | eventos omitidos=%d", elapsed, omitted),
+        string.format("MAPA DO TREINO V3 | %.2fs | eventos omitidos=%d", elapsed, omitted),
         "ATRIBUTOS", table.concat(lines, "\n"),
         "ANIMAÇÕES", table.concat(animations, "\n"),
+        "MOVIMENTO", summarizeMotion(motion, timestamps),
         "LINHA DO TEMPO", table.concat(events, "\n"), "=== FIM ===",
     }, "\n")
     output.Text = table.concat(lines, "\n", 1, math.min(#lines, 3)) .. "\nToque em Copiar logs."
