@@ -50,12 +50,12 @@ gui.ResetOnSpawn = false
 local button = Instance.new("TextButton")
 button.Size = UDim2.fromOffset(300, 55)
 button.Position = UDim2.fromScale(.05, .65)
-button.Text = "Testar depósito dentro do cercado"
+button.Text = "Auto Colocar ligado · toque para pausar"
 button.TextWrapped = true
 button.Parent = gui
 gui.Parent = playerGui
 
-local running, cancelled = false, false
+local enabled = true
 local function deposit()
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -64,7 +64,7 @@ local function deposit()
 
     local function active()
         local carrying = player:GetAttribute("Carrying")
-        return gui.Parent and not cancelled and player.Character == character
+        return gui.Parent and enabled and player.Character == character
             and humanoid.Health > 0 and ownPen() == pen and carrying ~= true
             and (tonumber(carrying) or 0) == 0
     end
@@ -123,15 +123,28 @@ local function deposit()
 end
 
 button.Activated:Connect(function()
-    if running then
-        cancelled = true
-        return
+    enabled = not enabled
+    button.Text = enabled and "Auto Colocar ligado · toque para pausar"
+        or "Pausado · toque para retomar"
+end)
+
+task.spawn(function()
+    while gui.Parent do
+        local interval = .2
+        local character = player.Character
+        local carrying = player:GetAttribute("Carrying")
+        if enabled and character and carrying ~= true and (tonumber(carrying) or 0) == 0
+            and ownPen() and findEgg(character) then
+            button.Text = "Depositando · toque para pausar"
+            local ok, result = pcall(deposit)
+            if not gui.Parent then break end
+            if not ok then warn("[Teste Depósito] " .. tostring(result)) end
+            if enabled then
+                button.Text = (ok and result or "Falha · confira o console") .. "\nAuto ligado · toque para pausar"
+            end
+            -- Limita novas tentativas fora do cercado ou após uma recusa.
+            interval = 1
+        end
+        task.wait(interval)
     end
-    running, cancelled = true, false
-    button.Text = "Depositando · toque para parar"
-    local ok, result = pcall(deposit)
-    running = false
-    if not gui.Parent then return end
-    if not ok then warn("[Teste Depósito] " .. tostring(result)) end
-    button.Text = (ok and result or "Falha · confira o console") .. "\nToque para testar de novo"
 end)
