@@ -16,15 +16,18 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DE CORES · V4 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DE CORES · V5 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(.5,-8,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local record=make("TextButton",panel,{Position=UDim2.new(.5,3,0,41),Size=UDim2.new(.5,-8,0,29),
     Text="Iniciar",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
     BackgroundColor3=Color3.fromRGB(28,18,37)})
-local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(.5,0,0,33)})
-local filter=make("TextButton",overlay,{Text="Só verdes",Position=UDim2.fromScale(.5,0),Size=UDim2.new(.5,0,0,33)})
+local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(1/3,0,0,33)})
+local filter=make("TextButton",overlay,{Text="Só verdes",Position=UDim2.fromScale(1/3,0),Size=UDim2.new(1/3,0,0,33)})
+local copyAll=make("TextButton",overlay,{
+    Text="Copiar tudo",Position=UDim2.fromScale(2/3,0),Size=UDim2.new(1/3,0,0,33),
+})
 local scroll=make("ScrollingFrame",overlay,{Position=UDim2.fromOffset(0,35),Size=UDim2.new(1,0,1,-35),
     CanvasSize=UDim2.new(),ScrollingEnabled=true,ScrollingDirection=Enum.ScrollingDirection.Y,
     Active=true,ScrollBarThickness=8,BackgroundTransparency=1})
@@ -35,6 +38,16 @@ local output=make("TextLabel",scroll,{Text="",TextWrapped=true,
 local textService=game:GetService("TextService")
 local fullReport, greenReport
 local onlyGreen=false
+copyAll.Activated:Connect(function()
+    if not fullReport or fullReport=="" then return end
+    local copy = type(setclipboard)=="function" and setclipboard or toclipboard
+    if type(copy)~="function" then
+        copyAll.Text="Cópia indisponível"
+        return
+    end
+    local ok, result=pcall(copy,fullReport)
+    copyAll.Text=(ok and result~=false) and "Relatório copiado" or "Falha ao copiar"
+end)
 local function resizeReport()
     local width=math.floor(scroll.AbsoluteSize.X)-12
     if width<=0 then return end
@@ -209,7 +222,7 @@ local function finish()
     for _,row in ipairs(fx) do table.insert(lines,row) end
     for _,row in ipairs(moves) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DE CORES · V4 | eventos excedentes="..dropped}
+    local report={"MAPA DE CORES · V5 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -389,7 +402,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=duration then finish(); return end
-        status.Text=string.format("MAPA DE CORES · V4 · %s · %ds",
+        status.Text=string.format("MAPA DE CORES · V5 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(duration-(now-started))))
         task.wait(.08)
     end
