@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V50", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V52", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -86,7 +86,7 @@ local function applySpeed(session)
     if session.swamp and humanoid.WalkSpeed <= 5 then
         if not session.swampSlowed then
             session.swampSlowed = true
-            print("[Esquiva V50] Pântano · lentidão detectada")
+            print("[Esquiva V52] Pântano · lentidão detectada")
         end
         return
     end
@@ -103,7 +103,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V50] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
+            print(string.format("[Esquiva V52] Pântano · reforço retomado %.1f -> %.1f", session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -124,7 +124,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V50] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V52] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -468,15 +468,16 @@ local function passageGoal(root, passages, walls, warnings, bounds, ray, session
             liveRoute[#liveRoute + 1] = warning
         end
     end
-    local bestPart, bestTarget, bestDirection, bestCost
+    local bestPart, bestTarget, bestDirection, bestWall, bestCost
     for _, part in ipairs(passages) do
         local center = part.Position
         local distance = horizontalDistance(origin, center)
         local cost = distance - (part == session.passage and 8 or 0)
-        if distance <= 65 and (not bestCost or cost < bestCost)
+        if not session.crossedPassages[part] and distance <= 65 and (not bestCost or cost < bestCost)
             and inCage(center, bounds, 4) and math.abs(center.Y - floor.Position.Y) <= 2 then
             local target = Vector3.new(center.X, origin.Y, center.Z)
             local direction = part == session.passage and session.passageDirection or nil
+            local crossingWall = part == session.passage and session.passageWall or nil
             if not direction then
                 local closest
                 for _, wall in ipairs(walls) do
@@ -490,13 +491,20 @@ local function passageGoal(root, passages, walls, warnings, bounds, ray, session
                         and math.abs(rootOffset:Dot(wall.CFrame.LookVector)) <= 2.5
                         and (not closest or along < closest) then
                         closest = along
+                        crossingWall = wall
                         direction = rootOffset:Dot(normal) >= 0 and -normal.Unit or normal.Unit
                     end
                 end
             end
 
-            -- First align to the green center, then step across the wall plane.
-            if direction then target = target + direction * 3 end
+            -- Continue through the marker and finish beyond its far edge.
+            if direction then
+                local localDirection = part.CFrame:VectorToObjectSpace(direction)
+                local exitDistance = math.min(
+                    part.Size.X / (2 * math.max(math.abs(localDirection.X), .0001)),
+                    part.Size.Z / (2 * math.max(math.abs(localDirection.Z), .0001)))
+                target = target + direction * (exitDistance + 5)
+            end
             local travel = target - origin
             if inCage(target, bounds, 4)
                 and not threatened(target, liveRoute, TRIGGER_MARGIN)
@@ -505,12 +513,12 @@ local function passageGoal(root, passages, walls, warnings, bounds, ray, session
                 and (travel.Magnitude <= 1 or not workspace:Raycast(origin, travel, ray)) then
                 local landing = workspace:Raycast(target + Vector3.new(0, 4, 0), Vector3.new(0, -22, 0), ray)
                 if landing and landing.Normal.Y >= .65 and math.abs(landing.Position.Y - floor.Position.Y) <= 2 then
-                    bestPart, bestTarget, bestDirection, bestCost = part, target, direction, cost
+                    bestPart, bestTarget, bestDirection, bestWall, bestCost = part, target, direction, crossingWall, cost
                 end
             end
         end
     end
-    return bestPart, bestTarget, bestDirection
+    return bestPart, bestTarget, bestDirection, bestWall
 end
 
 local function cosmicShape(part)
@@ -552,7 +560,7 @@ local function startFight()
     local cosmic = zoneNumber == 5
     local swamp = zoneNumber == 10
     local fallbackBounds = mappedBounds[zoneNumber]
-    local session = { swamp = swamp, speedBoost = cosmic and "Área 5" or (swamp and "Pântano"), moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
+    local session = { swamp = swamp, crossedPassages = setmetatable({}, { __mode = "k" }), speedBoost = cosmic and "Área 5" or (swamp and "Pântano"), moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
     ray.RespectCanCollide = true
@@ -782,10 +790,26 @@ local function startFight()
                 end
                 urgent = gravityPart or urgent
                 if gravityCenter then danger = true end
-                local passage, passageTarget, passageDirection
+                if session.passage and session.passageDirection and session.passageTarget
+                    and horizontalDistance(root.Position, session.passageTarget) <= 2 then
+                    session.crossedPassages[session.passage] = true
+                    local wall = session.passageWall
+                    if wall and wall.Parent then
+                        for _, marker in ipairs(passages) do
+                            local relative = wall.CFrame:PointToObjectSpace(marker.Position)
+                            if math.abs(relative.X) <= 2 and math.abs(relative.Z) <= 45 then
+                                session.crossedPassages[marker] = true
+                            end
+                        end
+                    end
+                    session.crossedWalls = (session.crossedWalls or 0) + 1
+                    print(string.format("[Esquiva V52] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
+                end
+                local passage, passageTarget, passageDirection, passageWall
                 if swamp and insideArena and not urgent and #passages > 0 then
                     ray.FilterDescendantsInstances = folder and { character, folder } or { character }
-                    passage, passageTarget, passageDirection = passageGoal(root, passages, swampWalls, areas, bounds, ray, session)
+                    passage, passageTarget, passageDirection, passageWall = passageGoal(root, passages, swampWalls, areas, bounds, ray, session)
                 end
                 if passage then
                     local oldTarget = session.passageTarget
@@ -795,14 +819,14 @@ local function startFight()
                         session.passageTarget = passageTarget
                         session.passageRefresh = now + .5
                     end
-                    session.passage, session.passageDirection = passage, passageDirection
+                    session.passage, session.passageDirection, session.passageWall = passage, passageDirection, passageWall
                     session.walking, session.runGoal = false, nil
                     message = passageDirection and "Atravessando pelo vão verde"
                         or (horizontalDistance(root.Position, passageTarget) <= 2
                             and "Alinhado ao vão verde" or "Alinhando ao vão verde")
                 else
                     if session.passage then
-                        session.passage, session.passageTarget, session.passageDirection = nil, nil, nil
+                        session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                         humanoid:MoveTo(root.Position)
                     end
                     local followEdge = false
@@ -899,7 +923,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V50] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V52] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1234,14 +1258,19 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
 
     collectionStatus.Text = "Aguardando chegada à Área " .. zoneNumber .. "..."
     local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local landedAt
     local arrived = waitFor(root, 10, function()
-        if player.Character ~= character then return end
+        if (allowed and not allowed()) or player.Character ~= character then return true end
         local current = root.Position
-        return horizontalDistance(before, current) >= 55 and inEggZone(current, zoneNumber)
-            and humanoid and humanoid.FloorMaterial ~= Enum.Material.Air
+        if horizontalDistance(before, current) >= 55 and inEggZone(current, zoneNumber)
+            and humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
+            landedAt = landedAt or os.clock()
+            return os.clock() - landedAt >= .2
+        end
+        landedAt = nil
     end)
     if not arrived then return false, "IR!: chegada à Área " .. zoneNumber .. " não confirmada." end
-    if allowed and not allowed() then return false, "Ciclo desligado." end
+    if (allowed and not allowed()) or player.Character ~= character then return false, "Lançamento interrompido." end
     local invite = guiParent:FindFirstChild("FightUI")
     invite = invite and invite:FindFirstChild("FightInvite")
     local skip = invite and invite:FindFirstChild("FightSkip")
@@ -1255,13 +1284,45 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
     return true
 end
 
+local function eggRarity(egg, prompt)
+    local rank = tonumber(egg:GetAttribute("EggRarity")) or tonumber(egg:GetAttribute("Rarity"))
+    if rank then return rank end
+    local name = prompt.ObjectText:lower()
+    if name:find("mítico", 1, true) or name:find("mythic", 1, true) then return 5 end
+    if name:find("lendário", 1, true) or name:find("legendary", 1, true) then return 4 end
+    if name:find("épico", 1, true) or name:find("epic", 1, true) then return 3 end
+    if name:find("raro", 1, true) or name:find("rare", 1, true) then return 2 end
+    return 0
+end
+
+local function bestEgg(root, zoneNumber, retryAfter, minimumRank)
+    local folder = workspace:FindFirstChild("Eggs")
+    local selected, rank, distance
+    local now = os.clock()
+    for _, egg in ipairs(folder and folder:GetChildren() or {}) do
+        local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt and prompt.Enabled and prompt.ActionText:lower():find("pegar ovo", 1, true)
+            and eggZone(egg, prompt) == zoneNumber and (not retryAfter or (retryAfter[egg] or 0) <= now) then
+            local point = promptPosition(prompt)
+            local rarity = eggRarity(egg, prompt)
+            local gap = point and (point - root.Position).Magnitude
+            local reach = not minimumRank or math.min(18, prompt.MaxActivationDistance + 6)
+            if gap and (not minimumRank or (rarity > minimumRank and gap <= reach))
+                and (not rank or rarity > rank or (rarity == rank and gap < distance)) then
+                selected, rank, distance = egg, rarity, gap
+            end
+        end
+    end
+    return selected
+end
+
 local function collectEgg(egg, input, clicks, fromAuto)
     if hatching or depositing or collecting or (auto and not fromAuto) then return end
     if carryingEgg() then collectionStatus.Text = "Você já está carregando um ovo."; return end
     collecting = true
     local function allowed() return gui.Parent ~= nil and (not fromAuto or auto) end
     local heldPrompt
-    local ok, message, finished, eggName = pcall(function()
+    local ok, message, finished, eggName, upgrade = pcall(function()
         local eggs = workspace:FindFirstChild("Eggs")
         local zoneNumber = eggZone(egg)
         if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or zoneNumber > 12 then
@@ -1287,7 +1348,7 @@ local function collectEgg(egg, input, clicks, fromAuto)
             if not target then return "Ovo indisponível após o lançamento." end
         end
         collectionStatus.Text = "Indo até o ovo..."
-        if (root.Position - target).Magnitude > prompt.MaxActivationDistance then
+        if (root.Position - target).Magnitude > prompt.MaxActivationDistance * .9 then
             if not approach(character, root, egg, target, prompt.MaxActivationDistance, function()
                 return allowed() and prompt.Enabled and prompt:IsDescendantOf(egg)
             end) then
@@ -1303,12 +1364,29 @@ local function collectEgg(egg, input, clicks, fromAuto)
             return "O jogo não manteve o personagem perto do ovo."
         end
 
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local settledAt
+        local settled = waitFor(root, 1.5, function()
+            if not allowed() or not prompt:IsDescendantOf(egg) or not prompt.Enabled then return end
+            local point = promptPosition(prompt)
+            if humanoid and point and (root.Position - point).Magnitude <= prompt.MaxActivationDistance
+                and humanoid.FloorMaterial ~= Enum.Material.Air
+                and horizontalDistance(root.AssemblyLinearVelocity, Vector3.zero) <= 3 then
+                settledAt = settledAt or os.clock()
+                return os.clock() - settledAt >= .12
+            end
+            settledAt = nil
+        end, .04)
+        if not settled or not allowed() or player.Character ~= character then
+            return "Personagem sem posição estável para coletar."
+        end
         local name = prompt.ObjectText
+        local heldRank = eggRarity(egg, prompt)
         collectionStatus.Text = "Segurando a interação de coleta..."
         heldPrompt = prompt
         local holdDuration = math.max(0, prompt.HoldDuration)
         prompt:InputHoldBegin()
-        local releaseAt = os.clock() + holdDuration
+        local releaseAt = os.clock() + holdDuration + .08
         while os.clock() < releaseAt and allowed() and player.Character == character and prompt.Parent do
             task.wait(math.min(0.04, math.max(0, releaseAt - os.clock())))
         end
@@ -1326,7 +1404,29 @@ local function collectEgg(egg, input, clicks, fromAuto)
         collectionStatus.Text = "Ovo na mão · esquiva ligada."
         local pickedAt = os.clock()
         local deadline = pickedAt + 65
-        while allowed() and carryingEgg() and os.clock() < deadline do task.wait(0.2) end
+        local nextUpgradeCheck = 0
+        local dropAttempted = false
+        while allowed() and carryingEgg() and player.Character == character and os.clock() < deadline do
+            local now = os.clock()
+            if fromAuto and heldRank > 0 and not dropAttempted and now >= nextUpgradeCheck
+                and inEggZone(root.Position, zoneNumber) and humanoid
+                and humanoid.FloorMaterial ~= Enum.Material.Air then
+                nextUpgradeCheck = now + .35
+                local better = bestEgg(root, zoneNumber, nil, heldRank)
+                if better then
+                    local hud = guiParent:FindFirstChild("HUD")
+                    local drop = findFace(hud, "LARGAR OVO") or findFace(hud, "SOLTAR OVO")
+                    if drop then
+                        dropAttempted = true
+                        if signalFace(drop, input, clicks) then
+                            local released = waitFor(root, 1.5, function() return not carryingEgg() end)
+                            if released then return "Ovo solto para tentar raridade maior.", false, nil, better end
+                        end
+                    end
+                end
+            end
+            task.wait(.2)
+        end
         if not allowed() then return "Coleta interrompida." end
         if carryingEgg() then return "Ovo ainda em transporte." end
         if fromAuto then
@@ -1342,7 +1442,7 @@ local function collectEgg(egg, input, clicks, fromAuto)
     collecting = false
     if not ok then warn("[Coleta Área 1] " .. tostring(message)) end
     if gui.Parent then collectionStatus.Text = ok and message or "Erro na coleta. Veja o console." end
-    return ok and finished == true, eggName
+    return ok and finished == true, eggName, ok and upgrade or nil
 end
 
 local order = { common = 1, comum = 1, uncommon = 2, incomum = 2, rare = 3, raro = 3,
@@ -1797,7 +1897,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V50] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V52] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1906,7 +2006,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V50] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V52] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1933,14 +2033,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V50] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V52] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V50] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V52] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1949,35 +2049,6 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         task.wait(.35)
     end
     return false, "Eclosão interrompida.", hatched
-end
-
-local function bestEgg(root, zoneNumber)
-    if zoneNumber == 10 then
-        local best, distance
-        for _, egg in ipairs(pantanoEggs()) do
-            if egg.collectible and egg.position then
-                local gap = (egg.position - root.Position).Magnitude
-                if not best or egg.rank > best.rank or (egg.rank == best.rank and gap < distance) then
-                    best, distance = egg, gap
-                end
-            end
-        end
-        return best and best.object
-    end
-    local folder = workspace:FindFirstChild("Eggs")
-    local selected, rank, distance
-    for _, egg in ipairs(folder and folder:GetChildren() or {}) do
-        local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if eggZone(egg, prompt) == zoneNumber and prompt and prompt.Enabled then
-            local position = promptPosition(prompt)
-            local rarity = tonumber(egg:GetAttribute("EggRarity") or egg:GetAttribute("Rarity")) or 0
-            local d = position and (position - root.Position).Magnitude
-            if d and (not rank or rarity > rank or (rarity == rank and d < distance)) then
-                selected, rank, distance = egg, rarity, d
-            end
-        end
-    end
-    return selected
 end
 
 local looping = false
@@ -1990,6 +2061,8 @@ autoButton.Activated:Connect(function(input, clicks)
     looping = true
     task.spawn(function()
         local failures = 0
+        local retryAfter = setmetatable({}, { __mode = "k" })
+        local preferredEgg
         local function finishDeposit(character, root)
             local pen = ownPen()
             if pendingDeposit and autoDeposit then
@@ -2001,7 +2074,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V50] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V52] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2012,7 +2085,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V50] " .. problem) end
+                if problem then warn("[Inventário V52] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2028,9 +2101,16 @@ autoButton.Activated:Connect(function(input, clicks)
                 if not launched then return false, problem end
             end
             if not gui.Parent or not auto then return false, "Ciclo desligado" end
+            if active then
+                local ready = waitFor(root, 2, function() return not active end)
+                if not ready then return false, "Aguardando fim da esquiva" end
+            end
             if zoneNumber == 10 then collectionStatus.Text = "Pântano · aguardando ovos do ID 10..." end
             local egg = waitFor(root, zoneNumber == 10 and 18 or 8, function()
-                return not auto or bestEgg(root, zoneNumber)
+                local folder = workspace:FindFirstChild("Eggs")
+                if not auto then return true end
+                if preferredEgg and folder and preferredEgg.Parent == folder then return preferredEgg end
+                return bestEgg(root, zoneNumber, retryAfter)
             end)
             if not auto then return false, "Ciclo desligado" end
             if not egg then return false, "Aguardando ovos da Área " .. zoneNumber end
@@ -2041,8 +2121,14 @@ autoButton.Activated:Connect(function(input, clicks)
                     if tool:IsA("Tool") then previousTools[tool] = true end
                 end
             end
-            local collected, name = collectEgg(egg, input, clicks, true)
-            if not collected then return false, collectionStatus.Text end
+            preferredEgg = nil
+            local collected, name, upgrade = collectEgg(egg, input, clicks, true)
+            if not collected then
+                retryAfter[egg] = os.clock() + 20
+                preferredEgg = upgrade
+                return false, collectionStatus.Text, true
+            end
+            table.clear(retryAfter)
             pendingDeposit = { name = name, previousTools = previousTools, previousSlots = previousSlots }
             if not auto then return false, "Ciclo desligado" end
             local returnedCharacter = player.Character
@@ -2051,7 +2137,7 @@ autoButton.Activated:Connect(function(input, clicks)
             return finishDeposit(returnedCharacter, returnedRoot)
         end
         while gui.Parent and auto do
-            local ok, success, reason = pcall(runRound)
+            local ok, success, reason, retryEgg = pcall(runRound)
             if not gui.Parent or not auto then break end
             if ok and success then
                 failures = 0
@@ -2060,10 +2146,10 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V50] " .. detail) end
+                if not ok then warn("[Auto Coletar V52] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
-            local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
+            local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
             local untilTime = os.clock() + delay
             while gui.Parent and auto and os.clock() < untilTime do task.wait(0.2) end
         end
@@ -2120,7 +2206,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V50", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V52", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -2234,7 +2320,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V50] " .. tostring(reason or count))
+        warn("[Inventário V52] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2262,7 +2348,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V50] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V52] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2291,7 +2377,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V50] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V52] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
