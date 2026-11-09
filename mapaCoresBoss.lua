@@ -1,4 +1,4 @@
--- Inicie na área do boss antes de pegar o ovo. Diagnóstico somente de leitura.
+-- Execute na Área 2, antes de pegar o ovo. O coletor não move o personagem.
 local player = assert(game:GetService("Players").LocalPlayer)
 local playerGui = assert(player:WaitForChild("PlayerGui", 8))
 local prompts = game:GetService("ProximityPromptService")
@@ -16,43 +16,36 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DE CORES · V1 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DE CORES · V3 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(.5,-8,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local record=make("TextButton",panel,{Position=UDim2.new(.5,3,0,41),Size=UDim2.new(.5,-8,0,29),
     Text="Iniciar",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
     BackgroundColor3=Color3.fromRGB(28,18,37)})
-local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(.5,0,0,33)})
-local copy=make("TextButton",overlay,{Text="Selecionar texto",Position=UDim2.fromScale(.5,0),Size=UDim2.new(.5,0,0,33)})
+local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(1,0,0,33)})
 local scroll=make("ScrollingFrame",overlay,{Position=UDim2.fromOffset(0,35),Size=UDim2.new(1,0,1,-35),
     CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
-local output=make("TextBox",scroll,{Text="",TextEditable=true,MultiLine=true,TextWrapped=true,ClearTextOnFocus=false,
+local output=make("TextLabel",scroll,{Text="",TextWrapped=true,
     Size=UDim2.new(1,-10,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,
     TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
     Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.new(1,1,1)})
 close.Activated:Connect(function() overlay.Visible=false end)
-view.Activated:Connect(function() if output.Text~="" then overlay.Visible=true end end)
-copy.Activated:Connect(function()
-    if not overlay.Visible or output.Text=="" then return end
-    output:CaptureFocus()
-    output.CursorPosition=#output.Text+1
-    output.SelectionStart=1
-    copy.Text="Use Copiar do teclado"
+view.Activated:Connect(function()
+    if output.Text~="" then overlay.Visible=true end
 end)
 
 local started
 local duration=120
-local lines,fx,moves,greens,connections={},{},{},{},{}
+local lines,fx,moves,connections={},{},{},{}
 local dropped=0
-local seenColors, colorOrder={},{}
 local done=false
 local carryAt, endedAt
 local function vec(v) return v and string.format("%.1f,%.1f,%.1f",v.X,v.Y,v.Z) or "-" end
 local function log(kind, message)
     if not started or done then return end
-    local rows=kind=="FX" and fx or (kind=="MOV" and moves or (kind=="VERDE" and greens or lines))
-    local limit=kind=="FX" and 42 or (kind=="VERDE" and 36 or (kind=="MOV" and 85 or 65))
+    local rows=kind=="FX" and fx or (kind=="MOV" and moves or lines)
+    local limit=kind=="FX" and 48 or (kind=="MOV" and 100 or 85)
     if #rows>=limit then dropped=dropped+1; return end
     local t=os.clock()-started
     table.insert(rows,{t=t,text=string.format("%.3fs | %s | %s",t,kind,message)})
@@ -188,15 +181,14 @@ local function finish()
     for _,connection in ipairs(connections) do connection:Disconnect() end
     for _,row in ipairs(fx) do table.insert(lines,row) end
     for _,row in ipairs(moves) do table.insert(lines,row) end
-    for _,row in ipairs(greens) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DE CORES · V1 | eventos excedentes="..dropped}
-    table.insert(report,"PALETA RGB | "..table.concat(colorOrder,"; "))
+    local report={"MAPA DE CORES · V3 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
     output.Text=text
-    status.Text="Captura concluída · Ver relatório"
+    local saved=type(writefile)=="function" and pcall(writefile,"mapaCoresBoss.txt",text)
+    status.Text=saved and "mapaCoresBoss.txt salvo · Ver relatório" or "Captura concluída · Ver relatório"
 end
 local function nearbyEggs(r)
     local folder=workspace:FindFirstChild("Eggs")
@@ -229,7 +221,7 @@ record.Activated:Connect(function()
     if done then return end
     if started then finish(); return end
     if carrying() then
-        status.Text="Inicie antes de pegar o ovo"
+        status.Text="Comece na base, antes de pegar o ovo"
         return
     end
     started=os.clock()
@@ -288,37 +280,35 @@ task.spawn(function()
             if now>=nextFX then
                 nextFX=now+.08
                 local groups={}
-                local palette={}
+                local green1,green2,dist1,dist2
                 local folder=workspace:FindFirstChild("BossFX")
                 for part,state in pairs(watched) do
                     if part.Parent then
                         local c,size=part.Color,part.Size
                         local thin=math.min(size.X,size.Y,size.Z)
                         local span=math.max(size.X,size.Y,size.Z)
+                        local red=c.R>.45 and c.R>c.G*1.45 and c.R>c.B*1.45
                         local delta=part.Position-r.Position
                         local knownFX=fxFolder(part)
                         local near=Vector3.new(delta.X,0,delta.Z).Magnitude<=145+span/2
-                        local groundPart=thin<=1.5 and span>=4 and math.abs(delta.Y)<=10
-                        if near and part.Transparency<.98 and span>=1 and (knownFX or groundPart)
+                        if now>=nextGroup and size.Y<=1 and math.min(size.X,size.Z)>=2
+                            and math.abs(delta.Y)<=8 and part.Transparency<.98
+                            and c.G>.2 and c.G>c.R+.05 and c.G>c.B+.05
                             and not state.path:find(".Boss.",1,true) then
-                            local red,green,blue=math.floor(c.R*255+.5),math.floor(c.G*255+.5),math.floor(c.B*255+.5)
-                            local rgb=string.format("%d,%d,%d",red,green,blue)
-                            palette[rgb]=(palette[rgb] or 0)+1
-                            if not seenColors[rgb] and #colorOrder<128 then
-                                seenColors[rgb]=true
-                                table.insert(colorOrder,rgb)
+                            local d=delta.X*delta.X+delta.Z*delta.Z
+                            if d<=70*70 then
+                                if not dist1 or d<dist1 then
+                                    green2,dist2=green1,dist1
+                                    green1,dist1=part,d
+                                elseif not dist2 or d<dist2 then
+                                    green2,dist2=part,d
+                                end
                             end
-                            local greenCandidate=green>=50 and green>=red+12 and green>=blue+12
-                            if greenCandidate and (not state.greenAt or (now-state.greenAt>=.65
-                                and ((part.Position-state.greenPosition).Magnitude>=3
-                                    or (part.Size-state.greenSize).Magnitude>=2 or state.greenRGB~=rgb))) then
-                                state.greenAt,state.greenPosition,state.greenSize,state.greenRGB=now,part.Position,size,rgb
-                                log("VERDE",string.format("#%d %s | rgb=%s tr=%.2f | p=%s tam=%s rot=%s | jogador=%s",
-                                    state.id,state.path,rgb,part.Transparency,vec(part.Position),vec(size),
-                                    vec(part.Orientation),vec(r.Position)))
-                            end
-                            local source=folder and part:IsDescendantOf(folder) and part.ClassName or "Outros"
-                            local key=source.." rgb="..rgb
+                        end
+                        if red and near and part.Transparency<.98 and span>=1
+                            and (knownFX or (thin<=2 and math.abs(delta.Y)<=16))
+                            and not state.path:find(".Boss.",1,true) then
+                            local key=folder and part:IsDescendantOf(folder) and part.ClassName or "Outros"
                             local group=groups[key]
                             if not group then
                                 group={count=0,minX=math.huge,maxX=-math.huge,minZ=math.huge,maxZ=-math.huge,
@@ -331,36 +321,39 @@ task.spawn(function()
                             group.minZ,group.maxZ=math.min(group.minZ,position.Z),math.max(group.maxZ,position.Z)
                             local distance=Vector3.new(delta.X,0,delta.Z).Magnitude
                             if distance<group.distance then
-                                group.distance,group.position,group.size,group.rotation=distance,position,size,part.Orientation
+                                group.distance,group.position,group.size,group.rotation,group.color=distance,position,size,part.Orientation,c
                             end
                         end
                     else watched[part]=nil end
                 end
-                local summaries, colors={},{}
-                for rgb,count in pairs(palette) do table.insert(colors,rgb.." x"..count) end
-                table.sort(colors)
+                local summaries={}
                 for key,group in pairs(groups) do
-                    table.insert(summaries,{distance=group.distance,text=string.format("%s n=%d X[%.0f,%.0f] Z[%.0f,%.0f] prox=%.1f p=%s tam=%s rot=%s",
+                    table.insert(summaries,string.format("%s n=%d X[%.0f,%.0f] Z[%.0f,%.0f] prox=%.1f p=%s tam=%s rot=%s rgb=%s",
                         key,group.count,group.minX,group.maxX,group.minZ,group.maxZ,group.distance,
-                        vec(group.position),vec(group.size),vec(group.rotation))})
+                        vec(group.position),vec(group.size),vec(group.rotation),
+                        vec(group.color and Vector3.new(group.color.R,group.color.G,group.color.B)*255)))
                 end
                 if #summaries>0 then
-                    table.sort(summaries,function(a,b) return a.distance<b.distance end)
-                    local nearby={}
-                    for index=1,math.min(4,#summaries) do nearby[index]=summaries[index].text end
-                    lastGroups,lastGroupsAt=table.concat(nearby,"; "),now
-                    if now>=nextGroup then
-                        log("FX","CORES "..table.concat(colors,"; ",1,math.min(16,#colors))
-                            ..(#colors>16 and (" | +"..(#colors-16).." cores") or "").." | "..lastGroups)
-                        nextGroup=now+.65
+                    table.sort(summaries)
+                    lastGroups,lastGroupsAt=table.concat(summaries,"; "),now
+                end
+                if (#summaries>0 or green1) and now>=nextGroup then
+                    local details=table.concat(summaries,"; ")
+                    for _,part in ipairs({green1,green2}) do
+                        local c=part.Color
+                        details=details..string.format(" | VERDE #%d rgb=%.0f,%.0f,%.0f p=%s tam=%s rot=%s",
+                            watched[part].id,c.R*255,c.G*255,c.B*255,vec(part.Position),
+                            vec(part.Size),vec(part.Orientation))
                     end
-                else
+                    log("FX",details)
+                    nextGroup=now+.65
+                elseif #summaries==0 and not green1 and now>=nextGroup then
                     nextGroup=0
                 end
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=duration then finish(); return end
-        status.Text=string.format("MAPA DE CORES · V1 · %s · %ds",
+        status.Text=string.format("MAPA DE CORES · V3 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(duration-(now-started))))
         task.wait(.08)
     end
