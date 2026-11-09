@@ -1,5 +1,4 @@
 -- Inicie antes de pegar o ovo. A telemetria de inundação é ativada no Recife (ID 11).
-local receiverIP = ...
 local player = assert(game:GetService("Players").LocalPlayer)
 local playerGui = assert(player:WaitForChild("PlayerGui", 8))
 local prompts = game:GetService("ProximityPromptService")
@@ -17,7 +16,7 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DE CORES · V7 RECIFE · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DE CORES · V8 RECIFE · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(.5,-8,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local record=make("TextButton",panel,{Position=UDim2.new(.5,3,0,41),Size=UDim2.new(.5,-8,0,29),
@@ -26,8 +25,8 @@ local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),
     BackgroundColor3=Color3.fromRGB(28,18,37)})
 local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(1/3,0,0,33)})
 local filter=make("TextButton",overlay,{Text="Só verdes",Position=UDim2.fromScale(1/3,0),Size=UDim2.new(1/3,0,0,33)})
-local exportAll=make("TextButton",overlay,{
-    Text="Exportar relatório",Position=UDim2.fromScale(2/3,0),Size=UDim2.new(1/3,0,0,33),
+local copyReport=make("TextButton",overlay,{
+    Text="Copiar relatório",Position=UDim2.fromScale(2/3,0),Size=UDim2.new(1/3,0,0,33),
 })
 local scroll=make("ScrollingFrame",overlay,{Position=UDim2.fromOffset(0,35),Size=UDim2.new(1,0,1,-35),
     CanvasSize=UDim2.new(),ScrollingEnabled=true,ScrollingDirection=Enum.ScrollingDirection.Y,
@@ -39,37 +38,40 @@ local output=make("TextLabel",scroll,{Text="",TextWrapped=true,
 local textService=game:GetService("TextService")
 local fullReport, greenReport
 local onlyGreen=false
-local exporting=false
-local function receiverURL()
-    if type(receiverIP)~="string" then return end
-    local a,b,c,d=receiverIP:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
-    a,b,c,d=tonumber(a),tonumber(b),tonumber(c),tonumber(d)
-    if not a or a>255 or b>255 or c>255 or d>255 then return end
-    if a==10 or (a==192 and b==168) or (a==172 and b>=16 and b<=31) or a==127 then
-        return string.format("http://%d.%d.%d.%d:8765/recife",a,b,c,d)
-    end
+local function splitReport(report)
+    if #report<=6000 then return {report} end
+    local middle=math.floor(#report/2)
+    local before=report:sub(1,middle):match(".*()\n")
+    local after=report:find("\n",middle+1,true)
+    local boundary=before or after
+    if before and after and after-middle<middle-before then boundary=after end
+    if not boundary or boundary>=#report then return {report} end
+    return {report:sub(1,boundary),report:sub(boundary+1)}
 end
-exportAll.Activated:Connect(function()
-    if exporting or not fullReport or fullReport=="" then return end
-    local url=receiverURL()
-    if not url then
-        local ok=type(writefile)=="function" and pcall(writefile,"mapaCoresBoss.txt",fullReport)
-        exportAll.Text=ok and "TXT salvo no Delta" or "Configure o IP do Mac"
+
+local copyParts, copyIndex
+copyReport.Activated:Connect(function()
+    if not copyParts then return end
+    local copy=type(setclipboard)=="function" and setclipboard or toclipboard
+    if type(copy)~="function" then
+        copyReport.Text="Cópia indisponível"
         return
     end
-    local send=request or http_request or (syn and syn.request)
-    if type(send)~="function" then
-        exportAll.Text="Envio indisponível no Delta"
+    local part=copyIndex
+    local ok,result=pcall(copy,copyParts[part])
+    if not ok or result==false then
+        copyReport.Text="Falha · tente novamente"
         return
     end
-    exporting=true
-    exportAll.Text="Enviando…"
-    local ok,response=pcall(send,{
-        Url=url,Method="POST",Headers={["Content-Type"]="text/plain; charset=utf-8"},Body=fullReport,
-    })
-    exporting=false
-    local delivered=ok and type(response)=="table" and tonumber(response.StatusCode or response.Status)==201
-    exportAll.Text=delivered and "Salvo no Mac" or "Falha no envio · tente novamente"
+    if #copyParts==1 then
+        copyReport.Text="Relatório copiado"
+    elseif part==1 then
+        copyIndex=2
+        copyReport.Text="Copiar parte 2/2"
+    else
+        copyIndex=1
+        copyReport.Text="Parte 2 copiada · repetir"
+    end
 end)
 local function resizeReport()
     local width=math.floor(scroll.AbsoluteSize.X)-12
@@ -251,11 +253,13 @@ local function finish()
     for _,row in ipairs(moves) do table.insert(lines,row) end
     for _,row in ipairs(floodLines) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DE CORES · V7 RECIFE | eventos excedentes="..dropped}
+    local report={"MAPA DE CORES · V8 RECIFE | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
     fullReport=text
+    copyParts,copyIndex=splitReport(text),1
+    copyReport.Text=#copyParts==2 and "Copiar parte 1/2" or "Copiar relatório"
     local greenRows={}
     for _,row in ipairs(fx) do
         local marker=row.text:find(" | VERDE ",1,true)
@@ -265,8 +269,7 @@ local function finish()
     end
     greenReport=#greenRows>0 and table.concat(greenRows,"\n\n")
         or "Nenhum retângulo verde registrado nesta captura."
-    local saved=type(writefile)=="function" and pcall(writefile,"mapaCoresBoss.txt",text)
-    status.Text=saved and "mapaCoresBoss.txt salvo · Ver relatório" or "Captura concluída · Ver relatório"
+    status.Text="Captura concluída · Ver relatório"
 end
 local function nearbyEggs(r)
     local folder=workspace:FindFirstChild("Eggs")
@@ -505,7 +508,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=duration then finish(); return end
-        status.Text=string.format("MAPA DE CORES · V7 RECIFE · %s · %ds",
+        status.Text=string.format("MAPA DE CORES · V8 RECIFE · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(duration-(now-started))))
         task.wait(.08)
     end
