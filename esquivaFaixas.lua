@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V60", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V61", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -87,7 +87,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V60] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V61] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -104,7 +104,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V60] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V61] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -125,7 +125,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V60] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V61] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -873,7 +873,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V60] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V61] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1008,7 +1008,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V60] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V61] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1983,7 +1983,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
             and ownPen() == pen and not carryingEgg() and (not stayHere or autoDeposit)
     end
     local function confirm(seconds)
-        waitFor(root, seconds, function() return placed() or not eligible() end, .03)
+        waitFor(root, seconds, function() return placed() or not eligible() end, stayHere and 0 or .03)
         return placed()
     end
     local function tapToPlace()
@@ -1999,10 +1999,10 @@ local function performPlacement(character, root, pen, name, previousTools, previ
         pending = "O jogo não confirmou a colocação pelo toque"
         collectionStatus.Text = "Ovo selecionado · tocando para colocar..."
         pcall(function() firesignal(inputService.TouchTapInWorld, point, false) end)
-        if confirm(1.25) then return true end
+        if confirm(stayHere and .55 or 1.25) then return true end
         if eligible() then
             pcall(function() firesignal(inputService.TouchTap, { point }, false) end)
-            return confirm(1.25)
+            return confirm(stayHere and .55 or 1.25)
         end
         return false
     end
@@ -2046,10 +2046,16 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                     waitFor(root, .35, function() return tool.Parent == character or not eligible() end, .03)
                 end
                 if eligible() and tool.Parent == character then
-                    if tapToPlace() then return true end
-                    if eligible() then
+                    if stayHere then
                         tool:Activate()
-                        if confirm(1.5) then return true end
+                        if confirm(.45) then return true end
+                        if tapToPlace() then return true end
+                    else
+                        if tapToPlace() then return true end
+                        if eligible() then
+                            tool:Activate()
+                            if confirm(1.5) then return true end
+                        end
                     end
                 end
             end
@@ -2077,13 +2083,13 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V60] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V61] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
     if not eligible() then return false, "Ciclo interrompido." end
     collectionStatus.Text = pending .. " · confirmando..."
-    if confirm(3) then return true end
+    if confirm(stayHere and .75 or 3) then return true end
     return false, pending .. ". Colocação não confirmada."
 end
 
@@ -2157,8 +2163,10 @@ local function depositInventory(character, root, pen, input, clicks, stayHere)
         local ok, reason = placeInPen(character, root, pen, item.name, {}, {}, input, clicks, item, stayHere)
         if not ok then return placed, reason end
         placed = placed + 1
-        local remaining = (stayHere and .18 or .25) - (os.clock() - started)
-        if remaining > 0 then task.wait(remaining) end
+        if not stayHere then
+            local remaining = .25 - (os.clock() - started)
+            if remaining > 0 then task.wait(remaining) end
+        end
     end
     return placed
 end
@@ -2187,7 +2195,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V60] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V61] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2214,14 +2222,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V60] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V61] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V60] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V61] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2257,7 +2265,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V60] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V61] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2268,7 +2276,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V60] " .. problem) end
+                if problem then warn("[Inventário V61] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2355,7 +2363,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V60] " .. detail) end
+                if not ok then warn("[Auto Coletar V61] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2464,7 +2472,7 @@ local shell = make("Frame", gui, {
 round(shell, 12)
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(16, 4), Size = UDim2.new(1, -155, 0, 40),
-    Text = "Central de Ovos  /  V60", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "Central de Ovos  /  V61", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
@@ -2589,7 +2597,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V60] " .. tostring(reason or count))
+        warn("[Inventário V61] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2615,9 +2623,9 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V60] " .. tostring(ran and reason or count))
+                    warn("[Depósito V61] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
-                    retryAt = os.clock() + 3
+                    retryAt = os.clock() + 1
                 else
                     depositNow.Text = string.format("%d ovo(s) depositado(s)", count)
                 end
@@ -2649,7 +2657,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V60] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V61] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2678,7 +2686,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V60] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V61] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
@@ -2706,7 +2714,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V60"
+    header.Text = compact and "Central de Ovos" or "Central de Ovos  /  V61"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
     content.Visible = not compact
     zoomIn.Visible, zoomOut.Visible = not compact, not compact
