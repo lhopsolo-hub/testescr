@@ -16,23 +16,50 @@ local panel = make("Frame",gui,{Position=UDim2.new(0,10,1,-132),Size=UDim2.new(.
 make("UISizeConstraint",panel,{MaxSize=Vector2.new(390,76)})
 make("UICorner",panel,{CornerRadius=UDim.new(0,8)})
 local status=make("TextLabel",panel,{Position=UDim2.fromOffset(5,2),Size=UDim2.new(1,-10,0,37),
-    Text="MAPA DE CORES · V3 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
+    Text="MAPA DE CORES · V4 · toque em Iniciar",TextWrapped=true,TextSize=13,BackgroundTransparency=1,TextColor3=Color3.new(1,1,1)})
 local view=make("TextButton",panel,{Position=UDim2.fromOffset(5,41),Size=UDim2.new(.5,-8,0,29),
     Text="Ver relatório",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local record=make("TextButton",panel,{Position=UDim2.new(.5,3,0,41),Size=UDim2.new(.5,-8,0,29),
     Text="Iniciar",BackgroundColor3=Color3.fromRGB(88,49,132),TextColor3=Color3.new(1,1,1)})
 local overlay=make("Frame",gui,{Visible=false,Position=UDim2.fromScale(.05,.08),Size=UDim2.fromScale(.9,.77),
     BackgroundColor3=Color3.fromRGB(28,18,37)})
-local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(1,0,0,33)})
+local close=make("TextButton",overlay,{Text="Fechar",Size=UDim2.new(.5,0,0,33)})
+local filter=make("TextButton",overlay,{Text="Só verdes",Position=UDim2.fromScale(.5,0),Size=UDim2.new(.5,0,0,33)})
 local scroll=make("ScrollingFrame",overlay,{Position=UDim2.fromOffset(0,35),Size=UDim2.new(1,0,1,-35),
-    CanvasSize=UDim2.new(),AutomaticCanvasSize=Enum.AutomaticSize.Y,BackgroundTransparency=1})
+    CanvasSize=UDim2.new(),ScrollingEnabled=true,ScrollingDirection=Enum.ScrollingDirection.Y,
+    Active=true,ScrollBarThickness=8,BackgroundTransparency=1})
 local output=make("TextLabel",scroll,{Text="",TextWrapped=true,
-    Size=UDim2.new(1,-10,0,0),AutomaticSize=Enum.AutomaticSize.Y,BackgroundTransparency=1,
+    Size=UDim2.new(1,-12,0,0),BackgroundTransparency=1,
     TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
     Font=Enum.Font.Code,TextSize=13,TextColor3=Color3.new(1,1,1)})
+local textService=game:GetService("TextService")
+local fullReport, greenReport
+local onlyGreen=false
+local function resizeReport()
+    local width=math.floor(scroll.AbsoluteSize.X)-12
+    if width<=0 then return end
+    local size=textService:GetTextSize(output.Text,output.TextSize,output.Font,Vector2.new(width,100000))
+    local height=math.ceil(size.Y)+16
+    output.Size=UDim2.new(1,-12,0,height)
+    scroll.CanvasSize=UDim2.fromOffset(0,height)
+end
+local function showReport()
+    output.Text=onlyGreen and greenReport or fullReport
+    filter.Text=onlyGreen and "Ver tudo" or "Só verdes"
+    resizeReport()
+    scroll.CanvasPosition=Vector2.zero
+end
 close.Activated:Connect(function() overlay.Visible=false end)
+scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(resizeReport)
 view.Activated:Connect(function()
-    if output.Text~="" then overlay.Visible=true end
+    if not fullReport then return end
+    overlay.Visible=true
+    showReport()
+end)
+filter.Activated:Connect(function()
+    if not fullReport then return end
+    onlyGreen=not onlyGreen
+    showReport()
 end)
 
 local started
@@ -182,11 +209,20 @@ local function finish()
     for _,row in ipairs(fx) do table.insert(lines,row) end
     for _,row in ipairs(moves) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DE CORES · V3 | eventos excedentes="..dropped}
+    local report={"MAPA DE CORES · V4 | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
-    output.Text=text
+    fullReport=text
+    local greenRows={}
+    for _,row in ipairs(fx) do
+        local marker=row.text:find(" | VERDE ",1,true)
+        if marker then
+            greenRows[#greenRows+1]=string.format("%.3fs",row.t)..row.text:sub(marker)
+        end
+    end
+    greenReport=#greenRows>0 and table.concat(greenRows,"\n\n")
+        or "Nenhum retângulo verde registrado nesta captura."
     local saved=type(writefile)=="function" and pcall(writefile,"mapaCoresBoss.txt",text)
     status.Text=saved and "mapaCoresBoss.txt salvo · Ver relatório" or "Captura concluída · Ver relatório"
 end
@@ -353,7 +389,7 @@ task.spawn(function()
             end
         end
         if (endedAt and now-endedAt>1) or now-started>=duration then finish(); return end
-        status.Text=string.format("MAPA DE CORES · V3 · %s · %ds",
+        status.Text=string.format("MAPA DE CORES · V4 · %s · %ds",
             carryAt and "lutando" or "aguardando ovo",math.max(0,math.ceil(duration-(now-started))))
         task.wait(.08)
     end
