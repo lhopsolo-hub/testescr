@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V43", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V44", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -110,7 +110,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V43] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V44] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -708,7 +708,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V43] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V44] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -949,7 +949,7 @@ local function findFace(scope, text, zoneNumber)
             end
         end
     end
-    if named then return not namedAmbiguous and named or nil end
+    if zoneNumber == 10 then return named and not namedAmbiguous and named or nil end
     return not ambiguous and found or nil
 end
 
@@ -1205,32 +1205,65 @@ local function previewEgg(icon, object)
     icon.Text = ""
 end
 
+local function pantanoEggs()
+    local folder = workspace:FindFirstChild("Eggs")
+    local rows = {}
+    for _, egg in ipairs(folder and folder:GetChildren() or {}) do
+        if tonumber(egg:GetAttribute("Zone")) == 10 then
+            local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local position = egg:IsA("BasePart") and egg.Position
+                or (egg:IsA("Model") and egg:GetPivot().Position)
+            local rarity = tonumber(egg:GetAttribute("EggRarity") or egg:GetAttribute("Rarity")) or 0
+            rows[#rows + 1] = {
+                object = egg, position = position, rank = rarity,
+                name = prompt and prompt.ObjectText ~= "" and prompt.ObjectText or "Ovo do Pântano",
+                active = prompt and prompt.Enabled and prompt.ActionText:lower():find("pegar ovo", 1, true) ~= nil,
+            }
+        end
+    end
+    return rows
+end
+
 local lastSignature, lastEggObjects = nil, {}
 local function refreshEggs()
     local rows, loaded = {}, 0
     local zoneNumber = selectedZone
     local eggs = workspace:FindFirstChild("Eggs")
     local rarityNames = { [1] = "Comum", [2] = "Raro", [3] = "Épico", [4] = "Lendário" }
-    for _, object in ipairs(eggs and eggs:GetChildren() or {}) do
-        local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
-        local matches = eggZone(object, prompt) == zoneNumber
-        if matches then loaded = loaded + 1 end
-        if matches and prompt and prompt.Enabled then
-            local value = field(object, { "EggRarity", "Rarity" })
-            local numeric = tonumber(value)
-            local rarity = numeric and (rarityNames[numeric] or ("Raridade " .. numeric))
-                or tostring(value or "Sem raridade")
-            local image = field(object, { "Image", "Icon", "ImageId", "IconId", "Thumbnail" })
-            if type(image) == "number" or (type(image) == "string" and image:match("^%d+$")) then
-                image = "rbxassetid://" .. tostring(image)
+    if zoneNumber == 10 then
+        local scanned = pantanoEggs()
+        loaded = #scanned
+        for _, egg in ipairs(scanned) do
+            if egg.active then
+                rows[#rows + 1] = {
+                    object = egg.object, name = egg.name, rank = egg.rank,
+                    rarity = rarityNames[egg.rank] or ("Raridade " .. egg.rank),
+                    location = tostring(egg.position or ""), image = "",
+                }
             end
-            local rank = order[rarity:lower()] or 0
-            local location = object:IsA("BasePart") and object.Position
-                or (object:IsA("Model") and object:GetPivot().Position)
-            local label = prompt.ObjectText ~= "" and prompt.ObjectText or object.Name
-            table.insert(rows, { name = label, rarity = rarity, rank = rank,
-                image = type(image) == "string" and image or "",
-                location = location and tostring(location) or "", object = object })
+        end
+    else
+        for _, object in ipairs(eggs and eggs:GetChildren() or {}) do
+            local prompt = object:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local matches = eggZone(object, prompt) == zoneNumber
+            if matches then loaded = loaded + 1 end
+            if matches and prompt and prompt.Enabled then
+                local value = field(object, { "EggRarity", "Rarity" })
+                local numeric = tonumber(value)
+                local rarity = numeric and (rarityNames[numeric] or ("Raridade " .. numeric))
+                    or tostring(value or "Sem raridade")
+                local image = field(object, { "Image", "Icon", "ImageId", "IconId", "Thumbnail" })
+                if type(image) == "number" or (type(image) == "string" and image:match("^%d+$")) then
+                    image = "rbxassetid://" .. tostring(image)
+                end
+                local rank = order[rarity:lower()] or 0
+                local location = object:IsA("BasePart") and object.Position
+                    or (object:IsA("Model") and object:GetPivot().Position)
+                local label = prompt.ObjectText ~= "" and prompt.ObjectText or object.Name
+                table.insert(rows, { name = label, rarity = rarity, rank = rank,
+                    image = type(image) == "string" and image or "",
+                    location = location and tostring(location) or "", object = object })
+            end
         end
     end
     table.sort(rows, function(a, b)
@@ -1280,7 +1313,7 @@ local function refreshEggs()
                 Image = row.image, Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
                 ScaleType = Enum.ScaleType.Fit,
             })
-        elseif index <= 12 then
+        elseif zoneNumber ~= 10 and index <= 12 then
             pcall(previewEgg, icon, row.object)
         end
         make("TextLabel", item, {
@@ -1302,7 +1335,7 @@ end
 task.spawn(function()
     while gui.Parent do
         if eggsPanel.Visible then refreshEggs() end
-        task.wait(3)
+        task.wait(selectedZone == 10 and 1 or 3)
     end
 end)
 
@@ -1572,7 +1605,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V43] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V44] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1681,7 +1714,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V43] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V44] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1708,14 +1741,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V43] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V44] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V43] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V44] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1727,6 +1760,18 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
 end
 
 local function bestEgg(root, zoneNumber)
+    if zoneNumber == 10 then
+        local best, distance
+        for _, egg in ipairs(pantanoEggs()) do
+            if egg.active and egg.position then
+                local gap = (egg.position - root.Position).Magnitude
+                if not best or egg.rank > best.rank or (egg.rank == best.rank and gap < distance) then
+                    best, distance = egg, gap
+                end
+            end
+        end
+        return best and best.object
+    end
     local folder = workspace:FindFirstChild("Eggs")
     local selected, rank, distance
     for _, egg in ipairs(folder and folder:GetChildren() or {}) do
@@ -1764,7 +1809,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V43] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V44] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1775,7 +1820,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V43] " .. problem) end
+                if problem then warn("[Inventário V44] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1823,7 +1868,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V43] " .. detail) end
+                if not ok then warn("[Auto Coletar V44] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1860,7 +1905,7 @@ local function chooseArea(zoneNumber)
         return
     end
     selectedZone = zoneNumber
-    areaLabel.Text = selectedZone == 10 and "PÂNTANO · ID 10"
+    areaLabel.Text = selectedZone == 10 and "ÁREA 7 · PÂNTANO"
         or string.format("ÁREA %02d · toque: Pântano", selectedZone)
     list.CanvasPosition = Vector2.zero
     refreshEggs()
@@ -1883,7 +1928,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V43", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V44", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1997,7 +2042,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V43] " .. tostring(reason or count))
+        warn("[Inventário V44] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2025,7 +2070,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V43] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V44] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2054,7 +2099,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V43] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V44] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
@@ -2131,3 +2176,20 @@ end)
 gui.DescendantAdded:Connect(paint)
 showPage(1)
 repaint()
+
+-- Se o jogador chegar por conta própria, abra a lista do destino detectado.
+task.spawn(function()
+    local wasInPantano = false
+    while gui.Parent do
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local inside = root and inCage(root.Position, mappedBounds[10], 0)
+        if not inside then
+            wasInPantano = false
+        elseif not wasInPantano and #pantanoEggs() > 0 then
+            wasInPantano = true
+            if not auto and not collecting and selectedZone ~= 10 then chooseArea(10) end
+        end
+        task.wait(1)
+    end
+end)
