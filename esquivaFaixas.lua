@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V40", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V41", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -110,7 +110,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V40] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V41] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -685,7 +685,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V40] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V41] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -960,6 +960,12 @@ local function nearestEggZone(position)
     return nearest, distance
 end
 
+local function inEggZone(position, zoneNumber)
+    if zoneNumber == 10 and inCage(position, mappedBounds[10], 0) then return true end
+    local nearby, distance = nearestEggZone(position)
+    return nearby == zoneNumber and distance and distance <= 230
+end
+
 local function launchZone(character, root, input, clicks, allowed, zoneNumber)
     local hud = guiParent:FindFirstChild("HUD")
     local map = workspace:FindFirstChild("Map")
@@ -1005,8 +1011,7 @@ local function launchZone(character, root, input, clicks, allowed, zoneNumber)
     local arrived = waitFor(root, 10, function()
         if player.Character ~= character then return end
         local current = root.Position
-        local nearby, distance = nearestEggZone(current)
-        return horizontalDistance(before, current) >= 55 and nearby == zoneNumber and distance <= 230
+        return horizontalDistance(before, current) >= 55 and inEggZone(current, zoneNumber)
             and humanoid and humanoid.FloorMaterial ~= Enum.Material.Air
     end)
     if not arrived then return false, "IR!: chegada à Área " .. zoneNumber .. " não confirmada." end
@@ -1044,8 +1049,7 @@ local function collectEgg(egg, input, clicks, fromAuto)
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local target = promptPosition(prompt)
         if not root or not target then return "Personagem ou ovo indisponível." end
-        local nearby, distance = nearestEggZone(root.Position)
-        if (root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230)
+        if (root.Position.Z > -50 or not inEggZone(root.Position, zoneNumber))
             and (root.Position - target).Magnitude > prompt.MaxActivationDistance then
             local launched, reason = launchZone(character, root, input, clicks, allowed, zoneNumber)
             if not launched then return reason end
@@ -1529,7 +1533,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V40] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V41] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -1638,7 +1642,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V40] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V41] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -1665,14 +1669,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V40] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V41] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V40] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V41] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -1721,7 +1725,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V40] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V41] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -1732,7 +1736,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V40] " .. problem) end
+                if problem then warn("[Inventário V41] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -1742,14 +1746,16 @@ autoButton.Activated:Connect(function(input, clicks)
             if not root then return false, "Aguardando personagem" end
             if carryingEgg() then return false, "Aguardando fim do transporte" end
             if pendingDeposit then return finishDeposit(character, root) end
-            local nearby, distance = nearestEggZone(root.Position)
-            if root.Position.Z > -50 or nearby ~= zoneNumber or not distance or distance > 230 then
+            if root.Position.Z > -50 or not inEggZone(root.Position, zoneNumber) then
                 local launched, problem = launchZone(character, root, input, clicks,
                     function() return auto and gui.Parent end, zoneNumber)
                 if not launched then return false, problem end
             end
             if not gui.Parent or not auto then return false, "Ciclo desligado" end
-            local egg = waitFor(root, 8, function() return not auto or bestEgg(root, zoneNumber) end)
+            if zoneNumber == 10 then collectionStatus.Text = "Pântano · aguardando ovos do ID 10..." end
+            local egg = waitFor(root, zoneNumber == 10 and 18 or 8, function()
+                return not auto or bestEgg(root, zoneNumber)
+            end)
             if not auto then return false, "Ciclo desligado" end
             if not egg then return false, "Aguardando ovos da Área " .. zoneNumber end
             local previousSlots = hotbarSnapshot()
@@ -1778,7 +1784,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V40] " .. detail) end
+                if not ok then warn("[Auto Coletar V41] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = failures == 0 and 2 or math.min(25, 2 + failures * 3)
@@ -1838,7 +1844,7 @@ round(shell, 12)
 make("UISizeConstraint", shell, { MaxSize = Vector2.new(730, 490) })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(12, 3), Size = UDim2.new(1, -58, 0, 36),
-    Text = "CENTRAL DE OVOS · V40", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Text = "CENTRAL DE OVOS · V41", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     BackgroundTransparency = 1,
 })
@@ -1952,7 +1958,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V40] " .. tostring(reason or count))
+        warn("[Inventário V41] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -1980,7 +1986,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V40] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V41] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2009,7 +2015,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V40] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V41] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = 6 end
             end
