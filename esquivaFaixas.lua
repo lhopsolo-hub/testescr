@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V64", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V65", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -87,7 +87,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V64] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V65] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -104,7 +104,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V64] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V65] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -119,13 +119,13 @@ local function finish(session, message)
     session.hpConnection:Disconnect()
     restoreSpeed(session)
     updateSpeedLabel(nil)
-    if (session.walking or session.passage or session.sakuraTarget or session.reefTarget or session.reefHolding) and session.humanoid.Parent and session.root.Parent then
+    if (session.walking or session.passage or session.sakuraTarget or session.sakuraMovingTarget or session.reefTarget or session.reefHolding) and session.humanoid.Parent and session.root.Parent then
         session.humanoid:MoveTo(session.root.Position)
     end
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V64] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V65] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -644,7 +644,7 @@ local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, sess
                 local radius = sakuraGroundDisk(part, origin)
                 if radius then
                     if not disks[part] then
-                        print(string.format("[Sakura V64] Círculo vermelho · centro %s · raio visual %.1f",
+                        print(string.format("[Sakura V65] Círculo vermelho · centro %s · raio visual %.1f",
                             tostring(part.Position), radius))
                     end
                     disks[part] = {center = part.Position, radius = radius, frame = part.CFrame,
@@ -721,6 +721,43 @@ local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, sess
     end
     session.sakuraTarget = key
     return distance <= 2 and "Sakura · célula sem aviso" or "Sakura · indo à célula sem aviso"
+end
+
+local function sakuraMovingRefuge(root, humanoid, parts, folder, bounds, session, now)
+    local origin = root.Position
+    local best, distance
+    for _, part in ipairs(parts) do
+        if folder and part.Parent and part:IsDescendantOf(folder) then
+            local size, color, point = part.Size, part.Color, part.Position
+            -- Disco interno claro registrado sob o efeito móvel de Sakura.
+            if part.Material == Enum.Material.Neon and part.Transparency < .85
+                and size.X <= .6 and math.abs(size.Y - 17.4) <= .7 and math.abs(size.Z - 17.4) <= .7
+                and math.abs(part.CFrame.RightVector.Y) >= .94
+                and color.G >= .92 and math.abs(color.R - 190/255) <= .08
+                and math.abs(color.B - 205/255) <= .08 and math.abs(point.Y - origin.Y) <= 12
+                and inCage(point, bounds, 2) then
+                local gap = horizontalDistance(origin, point)
+                if not distance or gap < distance then best, distance = part, gap end
+            end
+        end
+    end
+
+    if not best then
+        session.sakuraMovingTarget, session.sakuraMovingGoal = nil, nil
+        return
+    end
+    local point = best.Position
+    if session.sakuraMovingTarget ~= best or not session.sakuraMovingGoal
+        or horizontalDistance(point, session.sakuraMovingGoal) >= .75
+        or now >= session.sakuraMovingRefresh then
+        humanoid:MoveTo(Vector3.new(point.X, origin.Y, point.Z))
+        session.sakuraMovingGoal, session.sakuraMovingRefresh = point, now + .2
+    end
+    if session.sakuraMovingTarget ~= best then
+        print("[Sakura V65] Refúgio móvel · centro " .. tostring(point))
+    end
+    session.sakuraMovingTarget = best
+    return distance <= 2 and "Sakura · no centro do refúgio móvel" or "Sakura · seguindo o refúgio móvel"
 end
 
 local mappedBounds = {
@@ -1009,7 +1046,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V64] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V65] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1024,6 +1061,11 @@ local function startFight()
                     if eventFX then table.insert(ignored, eventFX) end
                     ray.FilterDescendantsInstances = ignored
                     refuge = sakuraRefuge(root, humanoid, session.fxParts, folder, eventFX, bounds, session, now, ray)
+                    if refuge then
+                        session.sakuraMovingTarget, session.sakuraMovingGoal = nil, nil
+                    else
+                        refuge = sakuraMovingRefuge(root, humanoid, session.fxParts, folder, bounds, session, now)
+                    end
                 elseif reef and insideArena and #reefPlatforms > 0 then
                     ray.FilterDescendantsInstances = { character }
                     refuge = reefRefuge(root, humanoid, reefPlatforms, bounds, ray, session, now)
@@ -1150,7 +1192,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V64] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V65] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -2232,7 +2274,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V64] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V65] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2353,7 +2395,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V64] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V65] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2371,7 +2413,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V64] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V65] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2398,14 +2440,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V64] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V65] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V64] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V65] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2440,7 +2482,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V64] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V65] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2451,7 +2493,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V64] " .. problem) end
+                if problem then warn("[Inventário V65] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2538,7 +2580,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V64] " .. detail) end
+                if not ok then warn("[Auto Coletar V65] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2685,7 +2727,7 @@ do
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "V64   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
+        Text = "V65   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
         TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
@@ -2797,7 +2839,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V64] " .. tostring(reason or count))
+        warn("[Inventário V65] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2823,7 +2865,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V64] " .. tostring(ran and reason or count))
+                    warn("[Depósito V65] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -2857,7 +2899,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V64] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V65] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2886,7 +2928,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V64] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V65] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
