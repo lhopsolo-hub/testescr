@@ -31,7 +31,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V69", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V70", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -80,7 +80,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V69] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V70] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -98,7 +98,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V69] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V70] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -119,7 +119,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V69] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V70] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -739,7 +739,7 @@ local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, sess
                 local radius = sakuraGroundDisk(part, origin)
                 if radius then
                     if not disks[part] then
-                        print(string.format("[Sakura V69] Círculo vermelho · centro %s · raio visual %.1f",
+                        print(string.format("[Sakura V70] Círculo vermelho · centro %s · raio visual %.1f",
                             tostring(part.Position), radius))
                     end
                     disks[part] = {center = part.Position, radius = radius, frame = part.CFrame,
@@ -857,7 +857,7 @@ local function sakuraWideAttack(parts, folder, origin, bossPosition, session, no
 
     if marker then
         if now >= (session.sakuraWideUntil or 0) then
-            print("[Sakura V69] Ataque dos círculos claros · fuga em velocidade dobrada")
+            print("[Sakura V70] Ataque dos círculos claros · fuga em velocidade dobrada")
         end
         session.sakuraWideMarker = marker
         session.sakuraWideUntil = now + .55
@@ -1195,7 +1195,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V69] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V70] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1391,7 +1391,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V69] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V70] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -2468,7 +2468,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V69] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V70] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2589,7 +2589,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V69] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V70] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2607,7 +2607,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V69] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V70] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2634,14 +2634,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V69] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V70] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V69] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V70] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2676,7 +2676,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V69] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V70] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2687,7 +2687,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V69] " .. problem) end
+                if problem then warn("[Inventário V70] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2788,7 +2788,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V69] " .. detail) end
+                if not ok then warn("[Auto Coletar V70] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "AUTO ON  /  DEPÓSITO"
                 or (rareHunt and string.format("AUTO ON  /  %d/%d", releases, MAX_EGG_RELEASES) or "AUTO ON")
@@ -2905,7 +2905,7 @@ local header = make("TextLabel", shell, {
 })
 local terminalSubtitle = make("TextLabel", shell, {
     Position = UDim2.fromOffset(20, 36), Size = UDim2.new(1, -155, 0, 15),
-    Text = "TERMINAL DE OPERAÇÕES   /   BUILD 69", TextSize = 10,
+    Text = "TERMINAL DE OPERAÇÕES   /   BUILD 70", TextSize = 10,
     TextColor3 = Color3.fromRGB(143, 172, 189), BackgroundTransparency = 1,
     TextXAlignment = Enum.TextXAlignment.Left,
 })
@@ -2946,7 +2946,7 @@ do
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "SYS.69   /   AUTOMAÇÃO   /   CONTROLE LOCAL", Font = Enum.Font.GothamBold, TextSize = 10,
+        Text = "SYS.70   /   AUTOMAÇÃO   /   CONTROLE LOCAL", Font = Enum.Font.GothamBold, TextSize = 10,
         TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
@@ -3056,7 +3056,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V69] " .. tostring(reason or count))
+        warn("[Inventário V70] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -3082,7 +3082,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V69] " .. tostring(ran and reason or count))
+                    warn("[Depósito V70] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -3116,7 +3116,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V69] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V70] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -3145,7 +3145,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V69] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V70] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
@@ -3182,7 +3182,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "OVOS // 69" or "CENTRAL // OVOS"
+    header.Text = compact and "OVOS // 70" or "CENTRAL // OVOS"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, compact and 40 or 33)
     terminalSubtitle.Visible = not compact
     content.Visible = not compact
@@ -3250,6 +3250,92 @@ do
                 end
             end
             task.wait(.25)
+        end
+    end)
+end
+do
+    local interval = 120
+    local nextTap
+    local sending = false
+    local verified = false
+    local test = arcadeButton(overview, "TESTAR PULO AFK", UDim2.fromOffset(8, 219),
+        UDim2.new(.5, -12, 0, 33))
+    local repeatTap = arcadeButton(overview, "PULO 2 MIN // OFF", UDim2.new(.5, 4, 0, 219),
+        UDim2.new(.5, -12, 0, 33))
+    local report = make("TextLabel", overview, {
+        Position = UDim2.fromOffset(12, 258), Size = UDim2.new(1, -24, 0, 56),
+        Text = "AFK // Teste o pulo antes de ligar a repetição.",
+        TextWrapped = true, BackgroundTransparency = 1, TextSize = 12,
+        TextColor3 = Color3.fromRGB(166, 214, 225), TextXAlignment = Enum.TextXAlignment.Left,
+    })
+
+    local function attemptTap()
+        if sending then return end
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if active or carryingEgg() or collecting or depositing or hatching then
+            report.Text = "AFK // Aguardando uma pausa entre as ações."
+            return
+        end
+        if not humanoid or humanoid.Health <= 0 or humanoid.FloorMaterial == Enum.Material.Air then
+            report.Text = "AFK // Personagem precisa estar no chão."
+            return
+        end
+        if inputService:GetFocusedTextBox() then
+            report.Text = "AFK // Feche o campo de texto antes do teste."
+            return
+        end
+
+        sending = true
+        local jumped = false
+        local connection = humanoid.StateChanged:Connect(function(_, state)
+            if state == Enum.HumanoidStateType.Jumping then jumped = true end
+        end)
+        local ok, err = pcall(function()
+            local input = assert(inputService:CreateVirtualInput(), "Entrada virtual indisponível neste cliente")
+            input:SendKey(true, Enum.KeyCode.Space, false)
+            task.wait(.08)
+            input:SendKey(false, Enum.KeyCode.Space, false)
+        end)
+        if ok then task.wait(.35) end
+        connection:Disconnect()
+        sending = false
+        if not gui.Parent then return end
+        if not ok then
+            report.Text = "AFK // Falha ao enviar. Veja o console."
+            warn("[Teste AFK] " .. tostring(err))
+            verified, nextTap = false, nil
+            repeatTap.Text = "PULO 2 MIN // OFF"
+        elseif jumped then
+            verified = true
+            report.Text = "AFK // Pulo observado. Teste a sessão por 25 minutos."
+        else
+            verified, nextTap = false, nil
+            repeatTap.Text = "PULO 2 MIN // OFF"
+            report.Text = "AFK // Espaço enviado, mas o personagem não pulou."
+        end
+        return true
+    end
+
+    test.Activated:Connect(attemptTap)
+    repeatTap.Activated:Connect(function()
+        if not nextTap and not verified then
+            report.Text = "AFK // Faça um teste de pulo bem-sucedido primeiro."
+            return
+        end
+        nextTap = not nextTap and os.clock() + interval or nil
+        repeatTap.Text = nextTap and "PULO 2 MIN // ON" or "PULO 2 MIN // OFF"
+        report.Text = nextTap and "AFK // Primeiro teste agendado em dois minutos."
+            or "AFK // Repetição desligada."
+    end)
+    task.spawn(function()
+        while gui.Parent do
+            if nextTap and os.clock() >= nextTap then
+                local scheduled = nextTap
+                local attempted = attemptTap()
+                if nextTap == scheduled then nextTap = os.clock() + (attempted and interval or 2) end
+            end
+            task.wait(1)
         end
     end)
 end
