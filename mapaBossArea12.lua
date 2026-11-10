@@ -97,15 +97,17 @@ local lines,moves,connections={},{},{}
 local dropped=0
 local done=false
 local endedAt, hadCarry
-local floorLines, detailLines={},{}
+local floorLines, detailLines, gridLines={},{},{}
 local lastSignalContext, lastFloorContext="",""
+local gridContext
 local function vec(v) return v and string.format("%.1f,%.1f,%.1f",v.X,v.Y,v.Z) or "-" end
 local function log(kind, message)
     if not started or done or (endedAt and kind~="TRANSPORTE" and kind~="FIM BOSS") then return end
     local floor=kind=="CHÃO"
     local detail=kind=="SINAL"
-    local rows=floor and floorLines or (detail and detailLines or (kind=="MOV" and moves or lines))
-    local limit=floor and 85 or (detail and 220 or (kind=="MOV" and 100 or 85))
+    local grid=kind=="GRADE" or kind=="CÉLULA"
+    local rows=grid and gridLines or floor and floorLines or (detail and detailLines or (kind=="MOV" and moves or lines))
+    local limit=grid and 600 or floor and 85 or (detail and 220 or (kind=="MOV" and 100 or 85))
     if #rows>=limit then dropped=dropped+1; return end
     local t=os.clock()-started
     table.insert(rows,{t=t,text=string.format("%.3fs | %s | %s",t,kind,message)})
@@ -176,6 +178,7 @@ listen(workspace.DescendantAdded,function(part)
 end)
 listen(workspace.DescendantRemoving,function(part)
     local state=watched[part]
+    if state and state.gridLogged then log("GRADE",string.format("#%d removida | %s",state.id,state.path)) end
     if state and state.signalLogged then log("SINAL",string.format("#%d removido | %s",state.id,state.path)) end
     watched[part]=nil
 end)
@@ -226,7 +229,7 @@ listen(player:GetAttributeChangedSignal("BossHP"),function()
     local value=player:GetAttribute("BossHP")
     local r=root()
     if type(hp)=="number" and type(value)=="number" and hp>=0 and value>=0 and value<hp then
-        log("DANO",string.format("%.2f -> %.2f | %s%s",hp,value,motion(r),lastFloorContext..lastSignalContext))
+        log("DANO",string.format("%.2f -> %.2f | %s%s",hp,value,motion(r),lastFloorContext..lastSignalContext..(gridContext and gridContext(r) or "")))
     elseif type(value)~="number" or value<0 then
         log("FIM BOSS","BossHP="..tostring(value))
     elseif type(hp)~="number" or hp<0 then
@@ -258,10 +261,11 @@ local function finish()
     record.Text="Concluído"
     for _,connection in ipairs(connections) do connection:Disconnect() end
     for _,row in ipairs(moves) do table.insert(lines,row) end
+    for _,row in ipairs(gridLines) do table.insert(lines,row) end
     for _,row in ipairs(detailLines) do table.insert(lines,row) end
     for _,row in ipairs(floorLines) do table.insert(lines,row) end
     table.sort(lines,function(a,b) return a.t<b.t end)
-    local report={"MAPA DO BOSS · AUTO V2 | ID="..(detectedZone and tostring(detectedZone) or "não confirmado")..(nearestZone and (" | ovo próximo ID="..nearestZone) or "").." | eventos excedentes="..dropped}
+    local report={"MAPA DO BOSS · AUTO V3 · GRADE | ID="..(detectedZone and tostring(detectedZone) or "não confirmado")..(nearestZone and (" | ovo próximo ID="..nearestZone) or "").." | eventos excedentes="..dropped}
     for _,row in ipairs(lines) do table.insert(report,row.text) end
     table.insert(report,"=== FIM DO RELATÓRIO ===")
     local text=table.concat(report,"\n")
@@ -347,8 +351,13 @@ end
 local function sampleFloor(r, now)
     if now<nextFloor then return end
     nextFloor=now+.10
-    floorRay.FilterDescendantsInstances={r.Parent}
-    solidRay.FilterDescendantsInstances={r.Parent}
+    local excluded={r.Parent}
+    for _, name in ipairs({"Eggs","CarriedEggs"}) do
+        local folder=workspace:FindFirstChild(name)
+        if folder then table.insert(excluded,folder) end
+    end
+    floorRay.FilterDescendantsInstances=excluded
+    solidRay.FilterDescendantsInstances=excluded
     local keys, details={},{}
     for _,probe in ipairs(probes) do
         local key, detail=floorAt(r.Position+probe[2]+Vector3.new(0,2,0),floorRay)
@@ -372,7 +381,8 @@ local function sampleSignals(r, baseline)
             local size, p=part.Size,part.Position
             local thin=math.min(size.X,size.Y,size.Z)
             local distance=Vector3.new(p.X-r.Position.X,0,p.Z-r.Position.Z).Magnitude
-            local visible=part.Transparency<.98 and distance<=110+math.max(size.X,size.Z)/2
+            local visible=not state.path:find(".Boss.",1,true) and not state.gridKey
+                and part.Transparency<.98 and distance<=110+math.max(size.X,size.Z)/2
             local groundEffect=thin<=2 and math.max(size.X,size.Z)>=2 and math.abs(p.Y-r.Position.Y)<=18
             if visible and (fxFolder(part) or groundEffect) and not part:IsDescendantOf(r.Parent) then
                 local color=rgb(part.Color)
@@ -381,7 +391,7 @@ local function sampleSignals(r, baseline)
                 local key=string.format("%s/%s/%.1f/%s%s",color,part.Material.Name,part.Transparency,vec(size),position)
                 if baseline and not knownFX then
                     state.signalKey=key
-                elseif key~=state.signalKey then
+                elseif key~=state.signalKey and os.clock()>=(state.nextSignal or 0) then
                     table.insert(candidates,{part=part,state=state,key=key,color=color,distance=distance})
                 end
             elseif state.signalKey then
@@ -397,13 +407,73 @@ local function sampleSignals(r, baseline)
     for index=1,math.min(#candidates,8) do
         local item=candidates[index]
         local part,state=item.part,item.state
-        state.signalKey,state.signalLogged=item.key,true
+        state.signalKey,state.signalLogged,state.nextSignal=item.key,true,os.clock()+.35
         if index==1 then
             lastSignalContext=string.format(" | último sinal #%d rgb=%s p=%s",state.id,item.color,vec(part.Position))
         end
         log("SINAL",string.format("#%d %s | rgb=%s mat=%s tr=%.2f | p=%s tam=%s rot=%s dist=%.1f",
             state.id,state.path,item.color,part.Material.Name,part.Transparency,
             vec(part.Position),vec(part.Size),vec(part.Orientation),item.distance))
+    end
+end
+
+local occupiedKey
+gridContext=function(r)
+    if not r then return "" end
+    local cells={}
+    for part,state in pairs(watched) do
+        if state.gridLogged and part.Parent then
+            local point=part.CFrame:PointToObjectSpace(r.Position)
+            local size=part.Size
+            if math.abs(point.X)<=size.X/2 and math.abs(point.Z)<=size.Z/2
+                and math.abs(point.Y)<=12 then
+                table.insert(cells,string.format("#%d %s tr=%.2f",state.id,rgb(part.Color),part.Transparency))
+            end
+        end
+    end
+    table.sort(cells)
+    return " | célula sob jogador="..(#cells>0 and table.concat(cells,"; ") or "sem peça detectada")
+end
+
+local function sampleGrid(r, baseline)
+    for part,state in pairs(watched) do
+        if part.Parent and not state.path:find(".Boss.",1,true) then
+            local size, point=part.Size,part.Position
+            local delta=point-r.Position
+            local shorter,longer=math.min(size.X,size.Z),math.max(size.X,size.Z)
+            local flat=shorter>=2 and longer<=shorter*1.45 and size.Y<=math.min(2,shorter*.4)
+                and math.abs(part.CFrame.UpVector.Y)>=.92
+            if flat and math.abs(delta.Y)<=22 and delta.X^2+delta.Z^2<=(135+longer/2)^2 then
+                local key=string.format("%s/%s/%.2f",rgb(part.Color),part.Material.Name,part.Transparency)
+                if key~=state.gridKey then
+                    local previous=state.gridKey
+                    state.gridKey=key
+                    if (not baseline or fxFolder(part)) and (previous or part.Transparency<.98 or fxFolder(part)) then
+                        state.gridLogged=true
+                        log("GRADE",string.format("#%d %s | %s -> %s | p=%s tam=%s rot=%s | jogador=%s",
+                            state.id,state.path,previous or "nova",key,vec(point),vec(size),
+                            vec(part.Orientation),vec(r.Position)))
+                    end
+                end
+            end
+        end
+    end
+    local key=gridContext(r)
+    if key~=occupiedKey then
+        occupiedKey=key
+        log("CÉLULA","jogador="..vec(r.Position)..key)
+    end
+end
+
+local function sampleBoss()
+    local id=detectedZone or nearestZone
+    local map=workspace:FindFirstChild("Map")
+    local zones=map and map:FindFirstChild("Zones")
+    local zone=zones and id and zones:FindFirstChild("Zone"..id)
+    local boss=zone and zone:FindFirstChild("Boss")
+    if boss and boss:IsA("PVInstance") then
+        local pivot=boss:GetPivot()
+        log("BOSS","p="..vec(pivot.Position).." | direção="..vec(pivot.LookVector))
     end
 end
 
@@ -419,6 +489,7 @@ task.spawn(function()
             if now>=nextMove then
                 nextMove=now+.65
                 log("MOV",motion(r))
+                if hadCarry then sampleBoss() end
             end
             if now>=nextWall then
                 nextWall=now+6
@@ -431,6 +502,7 @@ task.spawn(function()
             end
             if now>=nextFX then
                 nextFX=now+.08
+                sampleGrid(r,not seeded)
                 sampleSignals(r,not seeded)
                 seeded=true
             end
