@@ -35,7 +35,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V62", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V63", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -87,7 +87,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V62] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V63] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -104,7 +104,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V62] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V63] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -119,13 +119,13 @@ local function finish(session, message)
     session.hpConnection:Disconnect()
     restoreSpeed(session)
     updateSpeedLabel(nil)
-    if (session.walking or session.passage or session.reefTarget or session.reefHolding) and session.humanoid.Parent and session.root.Parent then
+    if (session.walking or session.passage or session.sakuraTarget or session.reefTarget or session.reefHolding) and session.humanoid.Parent and session.root.Parent then
         session.humanoid:MoveTo(session.root.Position)
     end
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V62] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V63] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -591,12 +591,81 @@ local function reefRefuge(root, humanoid, platforms, bounds, ray, session, now)
     return "Recife · subindo para a plataforma"
 end
 
+local function sakuraRefuge(root, humanoid, parts, folder, bounds, session, now)
+    local cells = {}
+    local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+    local count = 0
+    for _, part in ipairs(parts) do
+        if folder and part.Parent and part:IsDescendantOf(folder) then
+            local size, point = part.Size, part.Position
+            if size.X >= 7.5 and size.X <= 8.1 and size.Z >= 7.5 and size.Z <= 8.1
+                and size.Y <= .35 and math.abs(part.CFrame.UpVector.Y) >= .92
+                and part.Transparency < .98 and math.abs(point.Y - root.Position.Y) <= 20
+                and horizontalDistance(point, root.Position) <= 110
+                and (part.Material == Enum.Material.Fabric or part.Material == Enum.Material.Neon) then
+                -- As peças de aviso voltam a ser tecido. A posição conserva a identidade da célula.
+                local key = string.format("%.0f:%.0f", point.X * 2, point.Z * 2)
+                if not cells[key] then count = count + 1 end
+                cells[key] = point
+                if part.Material == Enum.Material.Neon then session.sakuraMarked[key] = true end
+                minX, maxX = math.min(minX, point.X), math.max(maxX, point.X)
+                minZ, maxZ = math.min(minZ, point.Z), math.max(maxZ, point.Z)
+            end
+        end
+    end
+
+    if count < 9 then
+        if session.sakuraSeen and now - session.sakuraSeen <= .25 and session.sakuraTarget then
+            return "Sakura · aguardando a grade"
+        end
+        if count == 0 and (not session.sakuraSeen or now - session.sakuraSeen > .25) then
+            table.clear(session.sakuraMarked)
+        end
+        session.sakuraTarget, session.sakuraSeen = nil, nil
+        return
+    end
+    session.sakuraSeen = now
+    local origin = root.Position
+    if origin.X < minX - 5 or origin.X > maxX + 5 or origin.Z < minZ - 5 or origin.Z > maxZ + 5 then
+        session.sakuraTarget = nil
+        return
+    end
+
+    local key, target, distance = nil, nil, math.huge
+    local previous = session.sakuraTarget
+    if previous and cells[previous] and not session.sakuraMarked[previous]
+        and inCage(cells[previous], bounds, 2) then
+        key, target = previous, cells[previous]
+        distance = horizontalDistance(origin, target)
+    else
+        for candidate, point in pairs(cells) do
+            if not session.sakuraMarked[candidate] and inCage(point, bounds, 2) then
+                local gap = horizontalDistance(origin, point)
+                if gap < distance then key, target, distance = candidate, point, gap end
+            end
+        end
+    end
+    if not target then
+        humanoid:MoveTo(origin)
+        session.sakuraTarget = nil
+        return "Sakura · aguardando célula sem aviso"
+    end
+
+    if key ~= previous or now >= (session.sakuraRefresh or 0) then
+        humanoid:MoveTo(Vector3.new(target.X, origin.Y, target.Z))
+        session.sakuraRefresh = now + .3
+    end
+    session.sakuraTarget = key
+    return distance <= 2 and "Sakura · célula sem aviso" or "Sakura · indo à célula sem aviso"
+end
+
 local mappedBounds = {
     [2] = { minX = -120, maxX = 120, minZ = -800, maxZ = -400 },
     [3] = { minX = -120, maxX = 120, minZ = -1200, maxZ = -800 },
     [5] = { minX = -120, maxX = 120, minZ = -2000, maxZ = -1600 },
     [10] = { minX = -120, maxX = 120, minZ = -2800, maxZ = -2400 },
     [11] = { minX = -120, maxX = 120, minZ = -3200, maxZ = -2800 },
+    [17] = { minX = -120, maxX = 120, minZ = -4800, maxZ = -4400 },
 }
 
 local function hasEgg(value)
@@ -618,11 +687,13 @@ local function startFight()
     local desert, ice = zoneNumber == 2, zoneNumber == 3
     local cosmic = zoneNumber == 5
     local swamp, reef = zoneNumber == 10, zoneNumber == 11
+    local sakura = zoneNumber == 17
     local fallbackBounds = mappedBounds[zoneNumber]
     local session = { slowArea = swamp and "Pântano" or (reef and "Recife"), crossedPassages = setmetatable({}, { __mode = "k" }), speedBoost = cosmic and "Área 5" or (swamp and "Pântano"), moves = 0, hits = 0, damage = 0, interrupted = false, warnings = {}, lastDistance = 0, humanoid = humanoid, root = root }
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
     ray.RespectCanCollide = true
+    if sakura then session.sakuraMarked = {} end
     active = session
     toggle.Text = "Desligar esquiva"
     session.hpConnection = player:GetAttributeChangedSignal("BossHP"):Connect(function()
@@ -800,7 +871,7 @@ local function startFight()
                         nearestBoss = horizontalDistance(root.Position, bossPosition)
                     end
                 end
-                if swamp or reef then
+                if swamp or reef or sakura then
                     local map = workspace:FindFirstChild("Map")
                     local zones = map and map:FindFirstChild("Zones")
                     local zone = zones and zones:FindFirstChild("Zone" .. zoneNumber)
@@ -873,7 +944,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V62] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V63] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -882,7 +953,9 @@ local function startFight()
                     passage, passageTarget, passageDirection, passageWall = passageGoal(root, passages, swampWalls, areas, bounds, ray, session)
                 end
                 local refuge
-                if reef and insideArena and #reefPlatforms > 0 then
+                if sakura and insideArena then
+                    refuge = sakuraRefuge(root, humanoid, session.fxParts, folder, bounds, session, now)
+                elseif reef and insideArena and #reefPlatforms > 0 then
                     ray.FilterDescendantsInstances = { character }
                     refuge = reefRefuge(root, humanoid, reefPlatforms, bounds, ray, session, now)
                 end
@@ -940,7 +1013,7 @@ local function startFight()
                         local delta, edgeDelta
                         if gravityCenter then
                             delta = safeStep(root, areas, ray, nil, bounds, 5, false, nil, gravityCenter, true)
-                        elseif reef and danger then
+                        elseif (reef or sakura) and danger then
                             delta = safeStep(root, areas, ray, bossPosition, bounds, 12, true, nil, nil, true, 40)
                                 or safeStep(root, areas, ray, nil, bounds, 8, true, nil, nil, true, 32)
                         elseif (desert or ice or cosmic or swamp) and danger then
@@ -951,7 +1024,7 @@ local function startFight()
                                 edgeDelta = perimeterStep(root, areas, ray, bossPosition, bounds, heading)
                                 delta = edgeDelta
                             end
-                            if (swamp or reef) and not delta then
+                            if (swamp or reef or sakura) and not delta then
                                 local innerBounds = {
                                     minX = bounds.minX + 8, maxX = bounds.maxX - 8,
                                     minZ = bounds.minZ + 8, maxZ = bounds.maxZ - 8,
@@ -993,7 +1066,7 @@ local function startFight()
                         end
                     end
                 end
-                if not refuge and not reef and not passage and (cosmic or (not desert and not ice)) and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
+                if not refuge and not reef and not sakura and not passage and (cosmic or (not desert and not ice)) and inCage(root.Position, bounds, 4) and now - lastJump >= JUMP_INTERVAL and humanoid.FloorMaterial ~= Enum.Material.Air then
                     humanoid.Jump = true
                     lastJump = now
                 end
@@ -1008,7 +1081,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V62] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V63] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1238,6 +1311,7 @@ end
 local function findFace(scope, text, zoneNumber)
     if not scope then return end
     local cardName = zoneNumber == 10 and "pantano" or (zoneNumber == 11 and "recife")
+        or (zoneNumber == 17 and "sakura")
     local found, named, ambiguous, namedAmbiguous
     for _, object in ipairs(scope:GetDescendants()) do
         if object.Name == "Face" and object:IsA("GuiButton") and visibleControl(object)
@@ -1306,7 +1380,7 @@ local function nearestEggZone(position)
 end
 
 local function inEggZone(position, zoneNumber)
-    if (zoneNumber == 10 or zoneNumber == 11) and inCage(position, mappedBounds[zoneNumber], 0) then return true end
+    if (zoneNumber == 10 or zoneNumber == 11 or zoneNumber == 17) and inCage(position, mappedBounds[zoneNumber], 0) then return true end
     local nearby, distance = nearestEggZone(position)
     return nearby == zoneNumber and distance and distance <= 230
 end
@@ -1486,7 +1560,7 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
     local ok, message, finished, eggName, upgrade, stop = pcall(function()
         local eggs = workspace:FindFirstChild("Eggs")
         local zoneNumber = eggZone(egg)
-        if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or zoneNumber > 12 then
+        if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or (zoneNumber > 12 and zoneNumber ~= 17) then
             return "Ovo indisponível. Escolha outro."
         end
         local prompt = egg:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -1753,7 +1827,7 @@ local function refreshEggs()
     for _, item in ipairs(list:GetChildren()) do
         if not item:IsA("UIListLayout") then item:Destroy() end
     end
-    local areaName = zoneNumber == 10 and "PÂNTANO" or (zoneNumber == 11 and "RECIFE" or ("ÁREA " .. zoneNumber))
+    local areaName = zoneNumber == 10 and "PÂNTANO" or (zoneNumber == 11 and "RECIFE") or (zoneNumber == 17 and "SAKURA") or ("ÁREA " .. zoneNumber)
     eggsTitle.Text = "OVOS · " .. areaName .. (zoneNumber == 10
         and string.format(" (%d/%d ativos)", #rows, loaded) or (" (" .. #rows .. ")"))
     if #rows == 0 then
@@ -2089,7 +2163,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V62] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V63] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2210,7 +2284,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V62] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V63] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2228,7 +2302,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V62] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V63] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2255,14 +2329,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V62] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V63] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V62] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V63] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2297,7 +2371,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V62] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V63] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2308,7 +2382,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V62] " .. problem) end
+                if problem then warn("[Inventário V63] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2395,7 +2469,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V62] " .. detail) end
+                if not ok then warn("[Auto Coletar V63] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2483,13 +2557,17 @@ local function chooseArea(zoneNumber)
     end
     selectedZone = zoneNumber
     areaLabel.Text = selectedZone == 10 and "ÁREA 7 · PÂNTANO"
-        or (selectedZone == 11 and "ÁREA 8 · RECIFE") or string.format("ID %02d · toque: Pântano", selectedZone)
+        or (selectedZone == 11 and "ÁREA 8 · RECIFE") or (selectedZone == 17 and "SAKURA · ID 17") or string.format("ID %02d · toque: Pântano", selectedZone)
     list.CanvasPosition = Vector2.zero
     refreshEggs()
 end
 areaLabel.Activated:Connect(function() chooseArea(10) end)
-previousArea.Activated:Connect(function() chooseArea((selectedZone - 2) % 12 + 1) end)
-nextArea.Activated:Connect(function() chooseArea(selectedZone % 12 + 1) end)
+previousArea.Activated:Connect(function()
+    chooseArea(selectedZone == 17 and 12 or (selectedZone == 1 and 17 or selectedZone - 1))
+end)
+nextArea.Activated:Connect(function()
+    chooseArea(selectedZone == 12 and 17 or (selectedZone == 17 and 1 or selectedZone + 1))
+end)
 
 local palettes = {
     { "Grafite", Color3.fromRGB(12, 14, 19), Color3.fromRGB(23, 27, 35), Color3.fromRGB(42, 51, 78), Color3.fromRGB(163, 181, 255) },
@@ -2538,7 +2616,7 @@ do
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "V62   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
+        Text = "V63   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
         TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
@@ -2650,7 +2728,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V62] " .. tostring(reason or count))
+        warn("[Inventário V63] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2676,7 +2754,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V62] " .. tostring(ran and reason or count))
+                    warn("[Depósito V63] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -2710,7 +2788,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V62] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V63] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2739,7 +2817,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V62] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V63] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
