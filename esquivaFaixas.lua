@@ -21,22 +21,21 @@ local function round(object, radius)
 end
 local panel = make("Frame", gui, {
     Position = UDim2.fromOffset(12, 12), Size = UDim2.new(0.49, 0, 0, 220),
-    BackgroundColor3 = Color3.fromRGB(10, 17, 24), BorderSizePixel = 0,
+    BackgroundColor3 = Color3.fromRGB(30, 10, 13), BorderSizePixel = 0,
 })
 make("UISizeConstraint", panel, { MaxSize = Vector2.new(345, 220) })
 make("UICorner", panel, { CornerRadius = UDim.new(0, 10) })
-make("UIStroke", panel, { Color = Color3.fromRGB(55, 255, 190), Thickness = 1, Transparency = 0.35 })
 
 local function control(class, text, y, height)
     return make(class, panel, {
         Position = UDim2.fromOffset(8, y), Size = UDim2.new(1, -16, 0, height),
-        Text = text, TextSize = 14, TextWrapped = true, Font = Enum.Font.Code,
-        TextColor3 = Color3.fromRGB(212, 231, 238),
+        Text = text, TextSize = 14, TextWrapped = true, Font = Enum.Font.GothamBold,
+        TextColor3 = Color3.fromRGB(255, 235, 233),
         BackgroundTransparency = class == "TextLabel" and 1 or 0,
-        BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
+        BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "DODGE // BOSS DEFENSE", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V64", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -1219,7 +1218,7 @@ local collectionStatus = make("TextLabel", eggsPanel, {
     Position = UDim2.new(0, 7, 1, -47), Size = UDim2.new(1, -14, 0, 42),
     BackgroundColor3 = Color3.fromRGB(59, 19, 24), TextColor3 = Color3.fromRGB(229, 240, 255),
     Text = "Escolha um ovo e toque em Coletar.", TextSize = 12, TextWrapped = true,
-    Font = Enum.Font.Code,
+    Font = Enum.Font.Gotham,
 })
 round(collectionStatus, 6)
 
@@ -1913,10 +1912,9 @@ local function refreshEggs()
         local row = rows[index]
         local item = make("Frame", list, {
             LayoutOrder = index, Size = UDim2.new(1, -5, 0, 82),
-            BackgroundColor3 = Color3.fromRGB(16, 29, 37), BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(59, 19, 24), BorderSizePixel = 0,
         })
         round(item, 6)
-        make("UIStroke", item, { Color = Color3.fromRGB(56, 111, 111), Thickness = 1, Transparency = 0.55 })
         local icon = make("TextLabel", item, {
             Text = "🥚", Position = UDim2.fromOffset(4, 7), Size = UDim2.fromOffset(35, 36),
             TextSize = 24, BackgroundTransparency = 1,
@@ -1932,13 +1930,13 @@ local function refreshEggs()
         make("TextLabel", item, {
             Text = row.name .. "\n" .. row.rarity, Position = UDim2.fromOffset(44, 4),
             Size = UDim2.new(1, -48, 0, 44), BackgroundTransparency = 1, TextSize = 12,
-            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Code,
+            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
             TextColor3 = colors[row.rank] or Color3.fromRGB(211, 221, 238),
         })
         local collect = make("TextButton", item, {
             Text = "Coletar", Position = UDim2.fromOffset(5, 51), Size = UDim2.new(1, -10, 0, 26),
-            BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
-            TextColor3 = Color3.fromRGB(222, 243, 244), TextSize = 13, Font = Enum.Font.Code,
+            BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
+            TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
         })
         round(collect, 5)
         collect.Activated:Connect(function(input, clicks) collectEgg(row.object, input, clicks) end)
@@ -2559,12 +2557,11 @@ end)
 local function arcadeButton(parent, caption, position, size)
     local button = make("TextButton", parent, {
         Position = position, Size = size, Text = caption, TextSize = 12,
-        Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(222, 243, 244),
-        BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
+        Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(242, 250, 255),
+        BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
         TextWrapped = true,
     })
     round(button, 6)
-    make("UIStroke", button, { Color = Color3.fromRGB(56, 111, 111), Thickness = 1, Transparency = 0.5 })
     return button
 end
 
@@ -2573,8 +2570,8 @@ do
         return make("TextLabel", parent, {
             Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, size + 10),
             BackgroundTransparency = 1, Text = caption, TextSize = size,
-            Font = Enum.Font.Code,
-            TextColor3 = Color3.fromRGB(177, 204, 210), TextXAlignment = Enum.TextXAlignment.Left,
+            Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham,
+            TextColor3 = Color3.fromRGB(225, 232, 250), TextXAlignment = Enum.TextXAlignment.Left,
         })
     end
     heading(eggsPanel, "OPERAÇÕES  /  COLETA", 8, 10, true)
@@ -2642,21 +2639,20 @@ nextArea.Activated:Connect(function()
 end)
 
 local palettes = {
-    { "Neon Grid", Color3.fromRGB(7, 13, 19), Color3.fromRGB(13, 23, 31), Color3.fromRGB(24, 45, 54), Color3.fromRGB(62, 255, 190) },
-    { "Cyberpunk", Color3.fromRGB(17, 9, 24), Color3.fromRGB(31, 17, 42), Color3.fromRGB(73, 35, 91), Color3.fromRGB(255, 87, 190) },
-    { "Toxic", Color3.fromRGB(9, 18, 15), Color3.fromRGB(16, 32, 24), Color3.fromRGB(28, 67, 45), Color3.fromRGB(164, 255, 75) },
-    { "Afterburn", Color3.fromRGB(20, 13, 9), Color3.fromRGB(36, 23, 15), Color3.fromRGB(76, 43, 23), Color3.fromRGB(255, 177, 64) },
+    { "Grafite", Color3.fromRGB(12, 14, 19), Color3.fromRGB(23, 27, 35), Color3.fromRGB(42, 51, 78), Color3.fromRGB(163, 181, 255) },
+    { "Crimson", Color3.fromRGB(29, 12, 18), Color3.fromRGB(56, 22, 35), Color3.fromRGB(149, 40, 63), Color3.fromRGB(255, 118, 108) },
+    { "Menta", Color3.fromRGB(12, 27, 25), Color3.fromRGB(25, 57, 49), Color3.fromRGB(28, 113, 93), Color3.fromRGB(101, 245, 194) },
+    { "Âmbar", Color3.fromRGB(33, 22, 13), Color3.fromRGB(63, 43, 28), Color3.fromRGB(141, 82, 26), Color3.fromRGB(255, 204, 107) },
 }
 local shell = make("Frame", gui, {
-    Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(870, 500),
-    BackgroundColor3 = Color3.fromRGB(7, 13, 19), BorderSizePixel = 0, ClipsDescendants = true,
+    Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(820, 465),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0, ClipsDescendants = true,
 })
 round(shell, 12)
-make("UIStroke", shell, { Color = Color3.fromRGB(62, 255, 190), Thickness = 1.5, Transparency = 0.18 })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(20, 8), Size = UDim2.new(1, -155, 0, 42),
-    Text = "NEXUS // ARCADE OPS", TextColor3 = Color3.fromRGB(62, 255, 190),
-    Font = Enum.Font.Code, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "Central de Ovos", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
 })
@@ -2664,34 +2660,33 @@ local shrink = arcadeButton(shell, "−", UDim2.new(1, -40, 0, 9), UDim2.fromOff
 local zoomOut = arcadeButton(shell, "A−", UDim2.new(1, -108, 0, 9), UDim2.fromOffset(30, 28))
 local zoomIn = arcadeButton(shell, "A+", UDim2.new(1, -74, 0, 9), UDim2.fromOffset(30, 28))
 local nav = make("Frame", shell, {
-    Position = UDim2.fromOffset(0, 58), Size = UDim2.new(0, 180, 1, -89),
-    BackgroundColor3 = Color3.fromRGB(13, 23, 31), BorderSizePixel = 0,
+    Position = UDim2.fromOffset(0, 58), Size = UDim2.new(0, 166, 1, -89),
+    BackgroundColor3 = Color3.fromRGB(35, 31, 65), BorderSizePixel = 0,
 })
 round(nav, 8)
-make("UIStroke", nav, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.42 })
 make("TextLabel", nav, {
     Position = UDim2.fromOffset(13, 9), Size = UDim2.new(1, -26, 0, 25),
-    BackgroundTransparency = 1, Text = "SYSTEM // MODULES", TextSize = 10,
-    Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(111, 156, 162),
+    BackgroundTransparency = 1, Text = "ÁREA DE TRABALHO", TextSize = 10,
+    Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(165, 180, 208),
     TextXAlignment = Enum.TextXAlignment.Left,
 })
 local content = make("Frame", shell, {
-    Position = UDim2.fromOffset(194, 64), Size = UDim2.new(1, -207, 1, -103),
+    Position = UDim2.fromOffset(179, 64), Size = UDim2.new(1, -192, 1, -103),
     BackgroundTransparency = 1,
 })
 do
     local function divider(position, size)
         make("Frame", shell, {
             Name = "Divider", Position = position, Size = size,
-            BackgroundColor3 = Color3.fromRGB(39, 68, 73), BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(53, 61, 78), BorderSizePixel = 0,
         })
     end
     divider(UDim2.fromOffset(0, 57), UDim2.new(1, 0, 0, 1))
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "NEXUS OS  //  BUILD 64.0  ·  LOCAL SESSION", Font = Enum.Font.Code, TextSize = 10,
-        TextColor3 = Color3.fromRGB(111, 156, 162), BackgroundTransparency = 1,
+        Text = "V64   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
+        TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
 end
@@ -2708,7 +2703,7 @@ asPage(eggsPanel)
 minimize:Destroy()
 eggsToggle:Destroy()
 hideEggs:Destroy()
-title.Text = "DODGE // BOSS DEFENSE"
+title.Text = "Esquiva"
 do
     for index, label in ipairs({ "− 2", "Padrão", "+ 2" }) do
         local button = arcadeButton(panel, label, UDim2.new((index - 1) / 3, 8, 0, 160),
@@ -2731,14 +2726,13 @@ eggsTitle.Text = "Coleta e ovos"
 
 local function settingsPage(heading, description)
     local page = make("Frame", content, {
-        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(7, 13, 19), BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0,
     })
     round(page, 8)
-    make("UIStroke", page, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.45 })
     make("TextLabel", page, {
         Position = UDim2.fromOffset(12, 7), Size = UDim2.new(1, -24, 0, 28),
-        Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(62, 255, 190),
-        TextSize = 17, Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left,
+        Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(224, 241, 255),
+        TextSize = 16, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
     })
     if description then
         local card = make("Frame", page, {
@@ -2746,12 +2740,11 @@ local function settingsPage(heading, description)
             Size = UDim2.new(1, -16, 0, 62), BorderSizePixel = 0,
         })
         round(card, 9)
-        make("UIStroke", card, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.5 })
         make("TextLabel", page, {
             Position = UDim2.fromOffset(12, 45), Size = UDim2.new(1, -24, 0, 56),
             Text = description, TextWrapped = true, BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(177, 204, 210), TextSize = 13,
-            Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left,
+            TextColor3 = Color3.fromRGB(219, 231, 249), TextSize = 13,
+            Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
         })
     end
     return page
@@ -2919,7 +2912,7 @@ local cornersButton = arcadeButton(looksPage, "Cantos", UDim2.new(.5, 4, 0, 224)
 local resetLooks = arcadeButton(looksPage, "Restaurar aparência padrão", UDim2.fromOffset(12, 266), UDim2.new(1, -24, 0, 32))
 local compact, zoom = false, 1
 local function layoutShell()
-    local width, height = 870, 500
+    local width, height = 820, 465
     if compact then width, height = 178, 58 end
     shell.Size = UDim2.fromOffset(width, height)
     local view = gui.AbsoluteSize
@@ -2931,7 +2924,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "NEXUS // OPS" or "NEXUS // ARCADE OPS"
+    header.Text = "Central de Ovos"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
     content.Visible = not compact
     nav.Visible = not compact
@@ -2965,7 +2958,7 @@ local function showPage(index)
     for i, entry in ipairs(pages) do
         entry[2].Visible = i == index
         entry[3].Text = "   " .. entry[4] .. "   " .. entry[1]
-        entry[3].TextColor3 = i == index and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(151, 178, 185)
+        entry[3].TextColor3 = i == index and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(192, 201, 217)
         entry[3].BackgroundColor3 = i == index and palette[4] or palette[2]
     end
     if index == 2 then refreshEggs() end
@@ -3018,17 +3011,16 @@ local function paint(object)
         object.CornerRadius = UDim.new(0, appearance.radius)
     elseif object:IsA("UIStroke") then
         object.Color = accent
-        object.Transparency = .42
+        object.Transparency = .65
     elseif object:IsA("UIGradient") then
         object.Enabled = false
     elseif object:IsA("TextButton") then
         object.BackgroundColor3 = palette[4]
-        object.TextColor3 = Color3.fromRGB(222, 243, 244)
-    elseif object == nav or (object:IsA("Frame") and (object.Name == "CollectionSurface" or object.Parent == list)) then
+    elseif object == nav or (object:IsA("Frame") and object.Name == "CollectionSurface") then
         object.BackgroundColor3 = palette[3]
         object.BackgroundTransparency = 1 - appearance.opacity
-    elseif object == collectionStatus then
-        object.BackgroundColor3 = palette[3]
+    elseif object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
+        object.BackgroundColor3 = palette[2]
     elseif object == header or object == title or object == eggsTitle or object == areaLabel then
         object.TextColor3 = accent
     end
@@ -3042,7 +3034,7 @@ local function repaint()
     local palette = palettes[themeIndex]
     for index, entry in ipairs(pages) do
         entry[3].BackgroundColor3 = index == selectedPage and palette[4] or palette[2]
-        entry[3].TextColor3 = index == selectedPage and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(151, 178, 185)
+        entry[3].TextColor3 = index == selectedPage and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(192, 201, 217)
     end
 end
 theme.Activated:Connect(function()
