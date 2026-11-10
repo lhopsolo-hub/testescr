@@ -16,15 +16,11 @@ end
 local gui = make("ScreenGui", guiParent, {
     Name = "EsquivaFaixas", ResetOnSpawn = false, DisplayOrder = 45,
 })
-local function round(object, radius)
-    make("UICorner", object, { CornerRadius = UDim.new(0, radius) })
-end
 local panel = make("Frame", gui, {
     Position = UDim2.fromOffset(12, 12), Size = UDim2.new(0.49, 0, 0, 220),
     BackgroundColor3 = Color3.fromRGB(30, 10, 13), BorderSizePixel = 0,
 })
 make("UISizeConstraint", panel, { MaxSize = Vector2.new(345, 220) })
-make("UICorner", panel, { CornerRadius = UDim.new(0, 10) })
 
 local function control(class, text, y, height)
     return make(class, panel, {
@@ -35,17 +31,14 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V68", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V69", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
 minimize.Position, minimize.Size = UDim2.new(1, -36, 0, 6), UDim2.fromOffset(29, 28)
-round(minimize, 6)
 local status = control("TextLabel", "Desligada", 38, 49)
 local toggle = control("TextButton", "Ligar esquiva", 92, 29)
 local eggsToggle = control("TextButton", "Lista de ovos", 124, 21)
-round(toggle, 7)
-round(eggsToggle, 6)
 local LINGER = 0.35
 local LOOKAHEAD = { 0.06, 0.12, 0.18, 0.24, 0.30, 0.36, 0.44, 0.52 }
 local TRIGGER_MARGIN, EXIT_MARGIN = 1.3, 8
@@ -87,7 +80,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V68] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V69] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -105,7 +98,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V68] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V69] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -126,7 +119,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V68] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V69] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -746,7 +739,7 @@ local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, sess
                 local radius = sakuraGroundDisk(part, origin)
                 if radius then
                     if not disks[part] then
-                        print(string.format("[Sakura V68] Círculo vermelho · centro %s · raio visual %.1f",
+                        print(string.format("[Sakura V69] Círculo vermelho · centro %s · raio visual %.1f",
                             tostring(part.Position), radius))
                     end
                     disks[part] = {center = part.Position, radius = radius, frame = part.CFrame,
@@ -864,7 +857,7 @@ local function sakuraWideAttack(parts, folder, origin, bossPosition, session, no
 
     if marker then
         if now >= (session.sakuraWideUntil or 0) then
-            print("[Sakura V68] Ataque dos círculos claros · fuga em velocidade dobrada")
+            print("[Sakura V69] Ataque dos círculos claros · fuga em velocidade dobrada")
         end
         session.sakuraWideMarker = marker
         session.sakuraWideUntil = now + .55
@@ -1202,7 +1195,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V68] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V69] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1398,7 +1391,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V68] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V69] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1440,7 +1433,6 @@ local eggsPanel = make("Frame", gui, {
     Size = UDim2.new(0.40, 0, 0.76, 0), BackgroundColor3 = Color3.fromRGB(30, 10, 13),
     BorderSizePixel = 0,
 })
-round(eggsPanel, 10)
 make("UISizeConstraint", eggsPanel, { MaxSize = Vector2.new(260, 540) })
 local eggsTitle = make("TextLabel", eggsPanel, {
     Text = "OVOS · ÁREA 1", Position = UDim2.fromOffset(9, 4), Size = UDim2.new(1, -46, 0, 31),
@@ -1451,7 +1443,6 @@ local hideEggs = make("TextButton", eggsPanel, {
     Text = "×", Position = UDim2.new(1, -33, 0, 5), Size = UDim2.fromOffset(27, 27),
     BackgroundColor3 = Color3.fromRGB(89, 23, 31), TextColor3 = Color3.new(1, 1, 1),
 })
-round(hideEggs, 6)
 hideEggs.Activated:Connect(function() eggsPanel.Visible = false end)
 eggsToggle.Activated:Connect(function() eggsPanel.Visible = not eggsPanel.Visible end)
 
@@ -1468,10 +1459,10 @@ local collectionStatus = make("TextLabel", eggsPanel, {
     Text = "Escolha um ovo e toque em Coletar.", TextSize = 12, TextWrapped = true,
     Font = Enum.Font.Gotham,
 })
-round(collectionStatus, 6)
 
 local auto, rareHunt = false, false
 local releasedEggs = {}
+local MAX_EGG_RELEASES = 7
 local autoDeposit, autoHatch = false, false
 local depositing, hatching = false, false
 local selectedZone = 1
@@ -1480,7 +1471,6 @@ local autoButton = make("TextButton", eggsPanel, {
     BackgroundColor3 = Color3.fromRGB(157, 31, 40), TextColor3 = Color3.fromRGB(255, 237, 234),
     Font = Enum.Font.GothamBold, Text = "Auto Coletar · OFF", TextSize = 13,
 })
-round(autoButton, 6)
 local function setAuto(value)
     auto = value
     autoButton.Text = value and "Auto Coletar · ON" or "Auto Coletar · OFF"
@@ -1828,7 +1818,7 @@ local function matchesReleasedEgg(egg, zoneNumber, rank, point, now)
     return false
 end
 
-local function bestEgg(root, zoneNumber, retryAfter, minimumRank, nearbyOnly, visited)
+local function bestEgg(root, zoneNumber, retryAfter, minimumRank, nearbyOnly, visited, includeReleased)
     local folder = workspace:FindFirstChild("Eggs")
     local selected, rank, distance
     local now = os.clock()
@@ -1845,7 +1835,7 @@ local function bestEgg(root, zoneNumber, retryAfter, minimumRank, nearbyOnly, vi
             local gap = point and (point - root.Position).Magnitude
             local reach = nearbyOnly and math.min(18, prompt.MaxActivationDistance + 6) or math.huge
             if gap and gap <= reach and (not minimumRank or rarity > minimumRank)
-                and not matchesReleasedEgg(egg, zoneNumber, rarity, point, now)
+                and (includeReleased or not matchesReleasedEgg(egg, zoneNumber, rarity, point, now))
                 and (not rank or rarity > rank or (rarity == rank and gap < distance)) then
                 selected, rank, distance = egg, rarity, gap
             end
@@ -1868,13 +1858,13 @@ local function releaseCarriedEgg(root, input, clicks, allowed, buttonTimeout)
     return released, dropPosition
 end
 
-local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
+local function collectEgg(egg, input, clicks, fromAuto, retryAfter, keepBest)
     if hatching or depositing or collecting or (auto and not fromAuto) then return end
     if carryingEgg() then collectionStatus.Text = "Você já está carregando um ovo."; return end
     collecting = true
     local function allowed() return gui.Parent ~= nil and (not fromAuto or auto) end
     local heldPrompt
-    local ok, message, finished, eggName, upgrade, stop = pcall(function()
+    local ok, message, finished, eggName, upgrade, stop, recycled = pcall(function()
         local eggs = workspace:FindFirstChild("Eggs")
         local zoneNumber = eggZone(egg)
         if not eggs or egg.Parent ~= eggs or not zoneNumber or zoneNumber < 1 or (zoneNumber > 12 and zoneNumber ~= 17) then
@@ -1934,7 +1924,7 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
         end
         local name = prompt.ObjectText
         local heldRank = eggRarity(egg, prompt)
-        local recycling = fromAuto and rareHunt and heldRank < 3
+        local recycling = fromAuto and rareHunt and not keepBest and heldRank < 3
         if recycling then
             local better = bestEgg(root, zoneNumber, retryAfter, 2)
             if better then return "Épico ou superior apareceu.", false, nil, better end
@@ -1969,7 +1959,7 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
                     egg = egg, zone = zoneNumber, rank = heldRank,
                     spawn = target, drop = dropPosition, untilTime = os.clock() + 32,
                 }
-                return "Ovo solto · buscando outro enquanto este expira.", false
+                return "Ovo solto.", false, nil, nil, false, true
             end
             return "Ciclo pausado: o jogo não confirmou soltar o ovo.", false, nil, nil, true
         end
@@ -1980,7 +1970,7 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
         local dropAttempted = false
         while allowed() and carryingEgg() and player.Character == character and os.clock() < deadline do
             local now = os.clock()
-            if fromAuto and heldRank > 0 and not dropAttempted and now >= nextUpgradeCheck
+            if fromAuto and not keepBest and heldRank > 0 and not dropAttempted and now >= nextUpgradeCheck
                 and inEggZone(root.Position, zoneNumber) and humanoid
                 and humanoid.FloorMaterial ~= Enum.Material.Air then
                 nextUpgradeCheck = now + .35
@@ -2009,7 +1999,7 @@ local function collectEgg(egg, input, clicks, fromAuto, retryAfter)
     collecting = false
     if not ok then warn("[Coleta Área 1] " .. tostring(message)) end
     if gui.Parent then collectionStatus.Text = ok and message or "Erro na coleta. Veja o console." end
-    return ok and finished == true, eggName, ok and upgrade or nil, ok and stop
+    return ok and finished == true, eggName, ok and upgrade or nil, ok and stop, ok and recycled
 end
 
 local order = { common = 1, comum = 1, uncommon = 2, incomum = 2, rare = 3, raro = 3,
@@ -2162,7 +2152,6 @@ local function refreshEggs()
             LayoutOrder = index, Size = UDim2.new(1, -5, 0, 82),
             BackgroundColor3 = Color3.fromRGB(59, 19, 24), BorderSizePixel = 0,
         })
-        round(item, 6)
         local icon = make("TextLabel", item, {
             Text = "🥚", Position = UDim2.fromOffset(4, 7), Size = UDim2.fromOffset(35, 36),
             TextSize = 24, BackgroundTransparency = 1,
@@ -2186,7 +2175,6 @@ local function refreshEggs()
             BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
             TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
         })
-        round(collect, 5)
         collect.Activated:Connect(function(input, clicks) collectEgg(row.object, input, clicks) end)
     end
 end
@@ -2480,7 +2468,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V68] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V69] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2601,7 +2589,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V68] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V69] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2619,7 +2607,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V68] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V69] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2646,14 +2634,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V68] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V69] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V68] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V69] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2672,7 +2660,7 @@ autoButton.Activated:Connect(function(input, clicks)
     setAuto(true)
     looping = true
     task.spawn(function()
-        local failures = 0
+        local failures, releases = 0, 0
         local retryAfter = setmetatable({}, { __mode = "k" })
         local visited = setmetatable({}, { __mode = "k" })
         local preferredEgg
@@ -2688,7 +2676,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V68] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V69] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2699,7 +2687,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V68] " .. problem) end
+                if problem then warn("[Inventário V69] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2720,9 +2708,11 @@ autoButton.Activated:Connect(function(input, clicks)
                 if not ready then return false, "Aguardando fim da esquiva" end
             end
             if zoneNumber == 10 then collectionStatus.Text = "Pântano · aguardando ovos do ID 10..." end
+            local keepBest = rareHunt and releases >= MAX_EGG_RELEASES
             local egg = waitFor(root, zoneNumber == 10 and 18 or 8, function()
                 local folder = workspace:FindFirstChild("Eggs")
                 if not auto then return true end
+                if keepBest then return bestEgg(root, zoneNumber, retryAfter, nil, false, nil, true) end
                 if preferredEgg and folder and preferredEgg.Parent == folder then return preferredEgg end
                 if rareHunt then
                     local candidate = bestEgg(root, zoneNumber, retryAfter, 2)
@@ -2756,7 +2746,17 @@ autoButton.Activated:Connect(function(input, clicks)
                 end
             end
             preferredEgg = nil
-            local collected, name, upgrade, stop = collectEgg(egg, input, clicks, true, retryAfter)
+            local collected, name, upgrade, stop, recycled = collectEgg(egg, input, clicks, true, retryAfter, keepBest)
+            if recycled then
+                releases = releases + 1
+                if releases == MAX_EGG_RELEASES then
+                    table.clear(retryAfter)
+                    return false, "7/7 · selecionando a maior raridade da área", true
+                end
+                retryAfter[egg] = os.clock() + 20
+                visited[egg] = true
+                return false, string.format("Épico+ · %d/%d ovos soltos", releases, MAX_EGG_RELEASES), true
+            end
             if stop then return false, collectionStatus.Text, false, true end
             if not collected then
                 retryAfter[egg] = os.clock() + 20
@@ -2764,7 +2764,9 @@ autoButton.Activated:Connect(function(input, clicks)
                 preferredEgg = upgrade
                 return false, collectionStatus.Text, true
             end
+            releases = 0
             table.clear(retryAfter)
+            table.clear(visited)
             pendingDeposit = { name = name, previousTools = previousTools, previousSlots = previousSlots }
             if not auto then return false, "Ciclo desligado" end
             local returnedCharacter = player.Character
@@ -2786,9 +2788,10 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V68] " .. detail) end
+                if not ok then warn("[Auto Coletar V69] " .. detail) end
             end
-            autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
+            autoButton.Text = pendingDeposit and autoDeposit and "AUTO ON  /  DEPÓSITO"
+                or (rareHunt and string.format("AUTO ON  /  %d/%d", releases, MAX_EGG_RELEASES) or "AUTO ON")
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
             local untilTime = os.clock() + delay
             while gui.Parent and auto and os.clock() < untilTime do task.wait(0.2) end
@@ -2809,7 +2812,6 @@ local function arcadeButton(parent, caption, position, size)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
         TextWrapped = true,
     })
-    round(button, 6)
     return button
 end
 
@@ -2832,8 +2834,6 @@ do
         Name = "CollectionSurface", Position = UDim2.new(.39, 4, 0, 66),
         Size = UDim2.new(.61, -12, 1, -74), BorderSizePixel = 0,
     })
-    round(controls, 10)
-    round(catalog, 10)
     heading(controls, "AUTOMAÇÃO", 10, 10, true)
     heading(controls, "Controles do ciclo", 29, 16, true)
     heading(controls, "STATUS DO CICLO", 156, 10, true)
@@ -2852,7 +2852,7 @@ do
         end
         rareHunt = not rareHunt
         hunt.Text = rareHunt and "Épico+ · ON" or "Épico+ · OFF"
-        collectionStatus.Text = rareHunt and "Épico+ · alterna ovos comuns e raros até achar um épico ou superior."
+        collectionStatus.Text = rareHunt and "Épico+ · até 7 ovos soltos. Depois, leva o melhor da área."
             or "Coleta normal · prioriza a maior raridade."
     end)
     eggsTitle.Parent = catalog
@@ -2887,7 +2887,7 @@ nextArea.Activated:Connect(function()
 end)
 
 local palettes = {
-    { "Grafite", Color3.fromRGB(12, 14, 19), Color3.fromRGB(23, 27, 35), Color3.fromRGB(42, 51, 78), Color3.fromRGB(163, 181, 255) },
+    { "Cyberpunk", Color3.fromRGB(9, 12, 20), Color3.fromRGB(15, 22, 33), Color3.fromRGB(22, 35, 50), Color3.fromRGB(111, 248, 226) },
     { "Crimson", Color3.fromRGB(29, 12, 18), Color3.fromRGB(56, 22, 35), Color3.fromRGB(149, 40, 63), Color3.fromRGB(255, 118, 108) },
     { "Menta", Color3.fromRGB(12, 27, 25), Color3.fromRGB(25, 57, 49), Color3.fromRGB(28, 113, 93), Color3.fromRGB(101, 245, 194) },
     { "Âmbar", Color3.fromRGB(33, 22, 13), Color3.fromRGB(63, 43, 28), Color3.fromRGB(141, 82, 26), Color3.fromRGB(255, 204, 107) },
@@ -2896,13 +2896,18 @@ local shell = make("Frame", gui, {
     Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(820, 465),
     BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0, ClipsDescendants = true,
 })
-round(shell, 12)
 local header = make("TextLabel", shell, {
-    Position = UDim2.fromOffset(20, 8), Size = UDim2.new(1, -155, 0, 42),
-    Text = "Central de Ovos", TextColor3 = Color3.fromRGB(124, 232, 255),
+    Position = UDim2.fromOffset(19, 5), Size = UDim2.new(1, -155, 0, 42),
+    Text = "CENTRAL // OVOS", TextColor3 = Color3.fromRGB(124, 232, 255),
     Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
+})
+local terminalSubtitle = make("TextLabel", shell, {
+    Position = UDim2.fromOffset(20, 36), Size = UDim2.new(1, -155, 0, 15),
+    Text = "TERMINAL DE OPERAÇÕES   /   BUILD 69", TextSize = 10,
+    TextColor3 = Color3.fromRGB(143, 172, 189), BackgroundTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Left,
 })
 local shrink = arcadeButton(shell, "−", UDim2.new(1, -40, 0, 9), UDim2.fromOffset(30, 28))
 local zoomOut = arcadeButton(shell, "A−", UDim2.new(1, -108, 0, 9), UDim2.fromOffset(30, 28))
@@ -2911,10 +2916,9 @@ local nav = make("Frame", shell, {
     Position = UDim2.fromOffset(0, 58), Size = UDim2.new(0, 166, 1, -89),
     BackgroundColor3 = Color3.fromRGB(35, 31, 65), BorderSizePixel = 0,
 })
-round(nav, 8)
 make("TextLabel", nav, {
     Position = UDim2.fromOffset(13, 9), Size = UDim2.new(1, -26, 0, 25),
-    BackgroundTransparency = 1, Text = "ÁREA DE TRABALHO", TextSize = 10,
+    BackgroundTransparency = 1, Text = "INDEX // MÓDULOS", TextSize = 10,
     Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(165, 180, 208),
     TextXAlignment = Enum.TextXAlignment.Left,
 })
@@ -2929,11 +2933,20 @@ do
             BackgroundColor3 = Color3.fromRGB(53, 61, 78), BorderSizePixel = 0,
         })
     end
+    make("Frame", shell, {
+        Name = "TerminalAccent", Position = UDim2.fromOffset(0, 0),
+        Size = UDim2.new(.31, 0, 0, 3), BorderSizePixel = 0,
+    })
+    make("Frame", shell, {
+        Name = "TerminalAccent", Position = UDim2.new(1, -62, 1, -3),
+        Size = UDim2.fromOffset(62, 3), BorderSizePixel = 0,
+    })
+    divider(UDim2.fromOffset(166, 58), UDim2.new(0, 1, 1, -89))
     divider(UDim2.fromOffset(0, 57), UDim2.new(1, 0, 0, 1))
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "V68   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
+        Text = "SYS.69   /   AUTOMAÇÃO   /   CONTROLE LOCAL", Font = Enum.Font.GothamBold, TextSize = 10,
         TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
@@ -2976,7 +2989,6 @@ local function settingsPage(heading, description)
     local page = make("Frame", content, {
         Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0,
     })
-    round(page, 8)
     make("TextLabel", page, {
         Position = UDim2.fromOffset(12, 7), Size = UDim2.new(1, -24, 0, 28),
         Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(224, 241, 255),
@@ -2987,7 +2999,6 @@ local function settingsPage(heading, description)
             Name = "CollectionSurface", Position = UDim2.fromOffset(8, 40),
             Size = UDim2.new(1, -16, 0, 62), BorderSizePixel = 0,
         })
-        round(card, 9)
         make("TextLabel", page, {
             Position = UDim2.fromOffset(12, 45), Size = UDim2.new(1, -24, 0, 56),
             Text = description, TextWrapped = true, BackgroundTransparency = 1,
@@ -3045,7 +3056,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V68] " .. tostring(reason or count))
+        warn("[Inventário V69] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -3071,7 +3082,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V68] " .. tostring(ran and reason or count))
+                    warn("[Depósito V69] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -3105,7 +3116,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V68] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V69] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -3134,7 +3145,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V68] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V69] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
@@ -3144,19 +3155,18 @@ task.spawn(function()
 end)
 
 local themeIndex = 1
-local appearance = { opacity = 1, radius = 10, accent = 1 }
+local appearance = { opacity = 1, accent = 1 }
 local accents = { "Do tema", "Azul", "Menta", "Violeta", "Âmbar" }
 local accentColors = {
     Color3.fromRGB(88, 156, 255), Color3.fromRGB(87, 222, 175),
     Color3.fromRGB(190, 138, 255), Color3.fromRGB(255, 195, 98),
 }
-local theme = arcadeButton(looksPage, "Tema · Grafite", UDim2.fromOffset(12, 105), UDim2.new(1, -24, 0, 29))
+local theme = arcadeButton(looksPage, "Tema · Cyberpunk", UDim2.fromOffset(12, 105), UDim2.new(1, -24, 0, 29))
 local scale = make("UIScale", shell, { Scale = 1 })
 local smaller = arcadeButton(looksPage, "Tamanho −", UDim2.fromOffset(12, 144), UDim2.new(.5, -16, 0, 29))
 local larger = arcadeButton(looksPage, "Tamanho +", UDim2.new(.5, 4, 0, 144), UDim2.new(.5, -16, 0, 29))
 local accentButton = arcadeButton(looksPage, "Destaque", UDim2.fromOffset(12, 184), UDim2.new(1, -24, 0, 32))
-local opacityButton = arcadeButton(looksPage, "Opacidade", UDim2.fromOffset(12, 224), UDim2.new(.5, -16, 0, 32))
-local cornersButton = arcadeButton(looksPage, "Cantos", UDim2.new(.5, 4, 0, 224), UDim2.new(.5, -16, 0, 32))
+local opacityButton = arcadeButton(looksPage, "Opacidade", UDim2.fromOffset(12, 224), UDim2.new(1, -24, 0, 32))
 local resetLooks = arcadeButton(looksPage, "Restaurar aparência padrão", UDim2.fromOffset(12, 266), UDim2.new(1, -24, 0, 32))
 local compact, zoom = false, 1
 local function layoutShell()
@@ -3172,8 +3182,9 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = "Central de Ovos"
-    header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
+    header.Text = compact and "OVOS // 69" or "CENTRAL // OVOS"
+    header.Size = UDim2.new(1, compact and -52 or -155, 0, compact and 40 or 33)
+    terminalSubtitle.Visible = not compact
     content.Visible = not compact
     nav.Visible = not compact
     zoomIn.Visible, zoomOut.Visible = not compact, not compact
@@ -3205,7 +3216,7 @@ local function showPage(index)
     local palette = palettes[themeIndex]
     for i, entry in ipairs(pages) do
         entry[2].Visible = i == index
-        entry[3].Text = "   " .. entry[4] .. "   " .. entry[1]
+        entry[3].Text = (i == index and " > " or "   ") .. entry[4] .. "  " .. entry[1]
         entry[3].TextColor3 = i == index and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(192, 201, 217)
         entry[3].BackgroundColor3 = i == index and palette[4] or palette[2]
     end
@@ -3251,25 +3262,29 @@ stylePanel(shell, header, true)
 local function paint(object)
     local palette = palettes[themeIndex]
     local accent = accentColors[appearance.accent - 1] or palette[5]
+    if object:IsA("TextLabel") or object:IsA("TextButton") then
+        object.Font = Enum.Font.Code
+    end
     if object == shell or object == panel or object == eggsPanel or object == penPage
         or object == hatchPage or object == looksPage or object == overview then
         object.BackgroundColor3 = palette[2]
         object.BackgroundTransparency = 1 - appearance.opacity
-    elseif object:IsA("UICorner") then
-        object.CornerRadius = UDim.new(0, appearance.radius)
+    elseif object.Name == "TerminalAccent" then
+        object.BackgroundColor3 = accent
     elseif object:IsA("UIStroke") then
         object.Color = accent
         object.Transparency = .65
     elseif object:IsA("UIGradient") then
         object.Enabled = false
     elseif object:IsA("TextButton") then
-        object.BackgroundColor3 = palette[4]
+        object.BackgroundColor3 = object == autoButton and auto and Color3.fromRGB(31, 123, 99) or palette[4]
+        if object == areaLabel then object.TextColor3 = accent end
     elseif object == nav or (object:IsA("Frame") and object.Name == "CollectionSurface") then
         object.BackgroundColor3 = palette[3]
         object.BackgroundTransparency = 1 - appearance.opacity
     elseif object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
         object.BackgroundColor3 = palette[2]
-    elseif object == header or object == title or object == eggsTitle or object == areaLabel then
+    elseif object == header or object == title or object == eggsTitle then
         object.TextColor3 = accent
     end
 end
@@ -3277,7 +3292,6 @@ local function repaint()
     theme.Text = "Tema · " .. palettes[themeIndex][1]
     accentButton.Text = "Destaque · " .. accents[appearance.accent]
     opacityButton.Text = string.format("Opacidade · %.0f%%", appearance.opacity * 100)
-    cornersButton.Text = "Cantos · " .. appearance.radius .. " px"
     for _, object in ipairs(gui:GetDescendants()) do paint(object) end
     local palette = palettes[themeIndex]
     for index, entry in ipairs(pages) do
@@ -3297,13 +3311,9 @@ opacityButton.Activated:Connect(function()
     appearance.opacity = appearance.opacity <= .61 and 1 or appearance.opacity - .1
     repaint()
 end)
-cornersButton.Activated:Connect(function()
-    appearance.radius = appearance.radius == 10 and 16 or (appearance.radius == 16 and 0 or 10)
-    repaint()
-end)
 resetLooks.Activated:Connect(function()
     themeIndex, zoom = 1, 1
-    appearance.opacity, appearance.radius, appearance.accent = 1, 10, 1
+    appearance.opacity, appearance.accent = 1, 1
     layoutShell()
     repaint()
 end)
