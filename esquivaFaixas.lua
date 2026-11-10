@@ -21,21 +21,22 @@ local function round(object, radius)
 end
 local panel = make("Frame", gui, {
     Position = UDim2.fromOffset(12, 12), Size = UDim2.new(0.49, 0, 0, 220),
-    BackgroundColor3 = Color3.fromRGB(30, 10, 13), BorderSizePixel = 0,
+    BackgroundColor3 = Color3.fromRGB(10, 17, 24), BorderSizePixel = 0,
 })
 make("UISizeConstraint", panel, { MaxSize = Vector2.new(345, 220) })
 make("UICorner", panel, { CornerRadius = UDim.new(0, 10) })
+make("UIStroke", panel, { Color = Color3.fromRGB(55, 255, 190), Thickness = 1, Transparency = 0.35 })
 
 local function control(class, text, y, height)
     return make(class, panel, {
         Position = UDim2.fromOffset(8, y), Size = UDim2.new(1, -16, 0, height),
-        Text = text, TextSize = 14, TextWrapped = true, Font = Enum.Font.GothamBold,
-        TextColor3 = Color3.fromRGB(255, 235, 233),
+        Text = text, TextSize = 14, TextWrapped = true, Font = Enum.Font.Code,
+        TextColor3 = Color3.fromRGB(212, 231, 238),
         BackgroundTransparency = class == "TextLabel" and 1 or 0,
-        BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
+        BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V63", 5, 30)
+local title = control("TextLabel", "DODGE // BOSS DEFENSE", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -87,7 +88,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V63] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V64] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -104,7 +105,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V63] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V64] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -125,7 +126,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V63] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V64] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -591,8 +592,29 @@ local function reefRefuge(root, humanoid, platforms, bounds, ray, session, now)
     return "Recife · subindo para a plataforma"
 end
 
-local function sakuraRefuge(root, humanoid, parts, folder, bounds, session, now)
-    local cells = {}
+local function sakuraGroundDisk(part, origin)
+    local color, size, frame = part.Color, part.Size, part.CFrame
+    if part.Transparency >= .98 or color.R < .65 or color.R <= color.G * 1.6
+        or color.R <= color.B * 1.6 or math.abs(part.Position.Y - origin.Y) > 15
+        or horizontalDistance(part.Position, origin) > 90 then return end
+
+    local width, depth
+    if size.X <= 1.5 and math.abs(frame.RightVector.Y) >= .94 then
+        width, depth = size.Y, size.Z
+    elseif size.Y <= 1.5 and math.abs(frame.UpVector.Y) >= .94 then
+        width, depth = size.X, size.Z
+    elseif size.Z <= 1.5 and math.abs(frame.LookVector.Y) >= .94 then
+        width, depth = size.X, size.Y
+    end
+    if not width or math.min(width, depth) < 2 or math.abs(width - depth) > math.max(width, depth) * .16 then
+        return
+    end
+    return math.max(width, depth) / 2
+end
+
+local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, session, now, ray)
+    local origin = root.Position
+    local cells, tileParts = {}, {}
     local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
     local count = 0
     for _, part in ipairs(parts) do
@@ -606,7 +628,7 @@ local function sakuraRefuge(root, humanoid, parts, folder, bounds, session, now)
                 -- As peças de aviso voltam a ser tecido. A posição conserva a identidade da célula.
                 local key = string.format("%.0f:%.0f", point.X * 2, point.Z * 2)
                 if not cells[key] then count = count + 1 end
-                cells[key] = point
+                cells[key], tileParts[part] = point, true
                 if part.Material == Enum.Material.Neon then session.sakuraMarked[key] = true end
                 minX, maxX = math.min(minX, point.X), math.max(maxX, point.X)
                 minZ, maxZ = math.min(minZ, point.Z), math.max(maxZ, point.Z)
@@ -614,7 +636,49 @@ local function sakuraRefuge(root, humanoid, parts, folder, bounds, session, now)
         end
     end
 
+    local disks = session.sakuraDisks
+    if count >= 9 then session.sakuraCabinAt = now end
+    if now - (session.sakuraCabinAt or -math.huge) <= 1.2 then
+        for _, part in ipairs(parts) do
+            if part.Parent and not tileParts[part] and ((folder and part:IsDescendantOf(folder))
+                or (eventFX and part:IsDescendantOf(eventFX))) then
+                local radius = sakuraGroundDisk(part, origin)
+                if radius then
+                    if not disks[part] then
+                        print(string.format("[Sakura V64] Círculo vermelho · centro %s · raio visual %.1f",
+                            tostring(part.Position), radius))
+                    end
+                    disks[part] = {center = part.Position, radius = radius, frame = part.CFrame,
+                        size = part.Size, expires = now + .35}
+                end
+            end
+        end
+    end
+    for part, disk in pairs(disks) do
+        if now >= disk.expires then disks[part] = nil end
+    end
+
+    local function clearOfDisks(point)
+        for _, disk in pairs(disks) do
+            if horizontalDistance(point, disk.center) <= disk.radius + 3 then return false end
+        end
+        return true
+    end
+
+    local function escapeDisk()
+        if clearOfDisks(origin) then return end
+        local delta = safeStep(root, disks, ray, nil, bounds, 3, false)
+        if delta then
+            humanoid:MoveTo(origin + delta)
+            session.sakuraTarget = "círculo"
+            return "Sakura · saindo do círculo vermelho"
+        end
+        return "Sakura · círculo vermelho sem saída detectada"
+    end
+
     if count < 9 then
+        local escape = escapeDisk()
+        if escape then return escape end
         if session.sakuraSeen and now - session.sakuraSeen <= .25 and session.sakuraTarget then
             return "Sakura · aguardando a grade"
         end
@@ -625,27 +689,28 @@ local function sakuraRefuge(root, humanoid, parts, folder, bounds, session, now)
         return
     end
     session.sakuraSeen = now
-    local origin = root.Position
     if origin.X < minX - 5 or origin.X > maxX + 5 or origin.Z < minZ - 5 or origin.Z > maxZ + 5 then
         session.sakuraTarget = nil
-        return
+        return escapeDisk()
     end
 
     local key, target, distance = nil, nil, math.huge
     local previous = session.sakuraTarget
     if previous and cells[previous] and not session.sakuraMarked[previous]
-        and inCage(cells[previous], bounds, 2) then
+        and inCage(cells[previous], bounds, 2) and clearOfDisks(cells[previous]) then
         key, target = previous, cells[previous]
         distance = horizontalDistance(origin, target)
     else
         for candidate, point in pairs(cells) do
-            if not session.sakuraMarked[candidate] and inCage(point, bounds, 2) then
+            if not session.sakuraMarked[candidate] and inCage(point, bounds, 2) and clearOfDisks(point) then
                 local gap = horizontalDistance(origin, point)
                 if gap < distance then key, target, distance = candidate, point, gap end
             end
         end
     end
     if not target then
+        local escape = escapeDisk()
+        if escape then return escape end
         humanoid:MoveTo(origin)
         session.sakuraTarget = nil
         return "Sakura · aguardando célula sem aviso"
@@ -693,7 +758,7 @@ local function startFight()
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Exclude
     ray.RespectCanCollide = true
-    if sakura then session.sakuraMarked = {} end
+    if sakura then session.sakuraMarked, session.sakuraDisks = {}, {} end
     active = session
     toggle.Text = "Desligar esquiva"
     session.hpConnection = player:GetAttributeChangedSignal("BossHP"):Connect(function()
@@ -737,6 +802,7 @@ local function startFight()
                     session.walking = false
                 end
                 local folder = workspace:FindFirstChild("BossFX")
+                local eventFX = sakura and workspace:FindFirstChild("EventFX")
                 if now - (session.effectsAt or -math.huge) >= 0.06 then
                     session.effectsAt = now
                     session.fxParts = {}
@@ -759,7 +825,7 @@ local function startFight()
                     if folder then scan(folder) end
                     for _, child in ipairs(workspace:GetChildren()) do
                         local name = child.Name:lower()
-                        if child ~= folder and (name == "effects" or name == "vfx" or name == "bosses"
+                        if child ~= folder and (child == eventFX or name == "effects" or name == "vfx" or name == "bosses"
                             or name:find("bossfx", 1, true)) then
                             scan(child)
                         elseif child:IsA("BasePart") then
@@ -944,7 +1010,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V63] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V64] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -954,7 +1020,11 @@ local function startFight()
                 end
                 local refuge
                 if sakura and insideArena then
-                    refuge = sakuraRefuge(root, humanoid, session.fxParts, folder, bounds, session, now)
+                    local ignored = { character }
+                    if folder then table.insert(ignored, folder) end
+                    if eventFX then table.insert(ignored, eventFX) end
+                    ray.FilterDescendantsInstances = ignored
+                    refuge = sakuraRefuge(root, humanoid, session.fxParts, folder, eventFX, bounds, session, now, ray)
                 elseif reef and insideArena and #reefPlatforms > 0 then
                     ray.FilterDescendantsInstances = { character }
                     refuge = reefRefuge(root, humanoid, reefPlatforms, bounds, ray, session, now)
@@ -1081,7 +1151,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V63] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V64] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -1149,7 +1219,7 @@ local collectionStatus = make("TextLabel", eggsPanel, {
     Position = UDim2.new(0, 7, 1, -47), Size = UDim2.new(1, -14, 0, 42),
     BackgroundColor3 = Color3.fromRGB(59, 19, 24), TextColor3 = Color3.fromRGB(229, 240, 255),
     Text = "Escolha um ovo e toque em Coletar.", TextSize = 12, TextWrapped = true,
-    Font = Enum.Font.Gotham,
+    Font = Enum.Font.Code,
 })
 round(collectionStatus, 6)
 
@@ -1843,9 +1913,10 @@ local function refreshEggs()
         local row = rows[index]
         local item = make("Frame", list, {
             LayoutOrder = index, Size = UDim2.new(1, -5, 0, 82),
-            BackgroundColor3 = Color3.fromRGB(59, 19, 24), BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(16, 29, 37), BorderSizePixel = 0,
         })
         round(item, 6)
+        make("UIStroke", item, { Color = Color3.fromRGB(56, 111, 111), Thickness = 1, Transparency = 0.55 })
         local icon = make("TextLabel", item, {
             Text = "🥚", Position = UDim2.fromOffset(4, 7), Size = UDim2.fromOffset(35, 36),
             TextSize = 24, BackgroundTransparency = 1,
@@ -1861,13 +1932,13 @@ local function refreshEggs()
         make("TextLabel", item, {
             Text = row.name .. "\n" .. row.rarity, Position = UDim2.fromOffset(44, 4),
             Size = UDim2.new(1, -48, 0, 44), BackgroundTransparency = 1, TextSize = 12,
-            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold,
+            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Code,
             TextColor3 = colors[row.rank] or Color3.fromRGB(211, 221, 238),
         })
         local collect = make("TextButton", item, {
             Text = "Coletar", Position = UDim2.fromOffset(5, 51), Size = UDim2.new(1, -10, 0, 26),
-            BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
-            TextColor3 = Color3.new(1, 1, 1), TextSize = 13, Font = Enum.Font.GothamBold,
+            BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
+            TextColor3 = Color3.fromRGB(222, 243, 244), TextSize = 13, Font = Enum.Font.Code,
         })
         round(collect, 5)
         collect.Activated:Connect(function(input, clicks) collectEgg(row.object, input, clicks) end)
@@ -2163,7 +2234,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V63] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V64] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2284,7 +2355,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V63] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V64] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2302,7 +2373,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V63] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V64] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2329,14 +2400,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V63] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V64] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V63] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V64] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2371,7 +2442,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V63] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V64] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2382,7 +2453,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V63] " .. problem) end
+                if problem then warn("[Inventário V64] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2469,7 +2540,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V63] " .. detail) end
+                if not ok then warn("[Auto Coletar V64] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "Auto ON · depósito pendente" or "Auto ON"
             local delay = retryEgg and .35 or (failures == 0 and 2 or math.min(25, 2 + failures * 3))
@@ -2488,11 +2559,12 @@ end)
 local function arcadeButton(parent, caption, position, size)
     local button = make("TextButton", parent, {
         Position = position, Size = size, Text = caption, TextSize = 12,
-        Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(242, 250, 255),
-        BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
+        Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(222, 243, 244),
+        BackgroundColor3 = Color3.fromRGB(23, 42, 49), BorderSizePixel = 0,
         TextWrapped = true,
     })
     round(button, 6)
+    make("UIStroke", button, { Color = Color3.fromRGB(56, 111, 111), Thickness = 1, Transparency = 0.5 })
     return button
 end
 
@@ -2501,8 +2573,8 @@ do
         return make("TextLabel", parent, {
             Position = UDim2.fromOffset(14, y), Size = UDim2.new(1, -28, 0, size + 10),
             BackgroundTransparency = 1, Text = caption, TextSize = size,
-            Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham,
-            TextColor3 = Color3.fromRGB(225, 232, 250), TextXAlignment = Enum.TextXAlignment.Left,
+            Font = Enum.Font.Code,
+            TextColor3 = Color3.fromRGB(177, 204, 210), TextXAlignment = Enum.TextXAlignment.Left,
         })
     end
     heading(eggsPanel, "OPERAÇÕES  /  COLETA", 8, 10, true)
@@ -2570,20 +2642,21 @@ nextArea.Activated:Connect(function()
 end)
 
 local palettes = {
-    { "Grafite", Color3.fromRGB(12, 14, 19), Color3.fromRGB(23, 27, 35), Color3.fromRGB(42, 51, 78), Color3.fromRGB(163, 181, 255) },
-    { "Crimson", Color3.fromRGB(29, 12, 18), Color3.fromRGB(56, 22, 35), Color3.fromRGB(149, 40, 63), Color3.fromRGB(255, 118, 108) },
-    { "Menta", Color3.fromRGB(12, 27, 25), Color3.fromRGB(25, 57, 49), Color3.fromRGB(28, 113, 93), Color3.fromRGB(101, 245, 194) },
-    { "Âmbar", Color3.fromRGB(33, 22, 13), Color3.fromRGB(63, 43, 28), Color3.fromRGB(141, 82, 26), Color3.fromRGB(255, 204, 107) },
+    { "Neon Grid", Color3.fromRGB(7, 13, 19), Color3.fromRGB(13, 23, 31), Color3.fromRGB(24, 45, 54), Color3.fromRGB(62, 255, 190) },
+    { "Cyberpunk", Color3.fromRGB(17, 9, 24), Color3.fromRGB(31, 17, 42), Color3.fromRGB(73, 35, 91), Color3.fromRGB(255, 87, 190) },
+    { "Toxic", Color3.fromRGB(9, 18, 15), Color3.fromRGB(16, 32, 24), Color3.fromRGB(28, 67, 45), Color3.fromRGB(164, 255, 75) },
+    { "Afterburn", Color3.fromRGB(20, 13, 9), Color3.fromRGB(36, 23, 15), Color3.fromRGB(76, 43, 23), Color3.fromRGB(255, 177, 64) },
 }
 local shell = make("Frame", gui, {
-    Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(820, 465),
-    BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0, ClipsDescendants = true,
+    Position = UDim2.fromOffset(12, 12), Size = UDim2.fromOffset(870, 500),
+    BackgroundColor3 = Color3.fromRGB(7, 13, 19), BorderSizePixel = 0, ClipsDescendants = true,
 })
 round(shell, 12)
+make("UIStroke", shell, { Color = Color3.fromRGB(62, 255, 190), Thickness = 1.5, Transparency = 0.18 })
 local header = make("TextLabel", shell, {
     Position = UDim2.fromOffset(20, 8), Size = UDim2.new(1, -155, 0, 42),
-    Text = "Central de Ovos", TextColor3 = Color3.fromRGB(124, 232, 255),
-    Font = Enum.Font.GothamBold, TextSize = 17, TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "NEXUS // ARCADE OPS", TextColor3 = Color3.fromRGB(62, 255, 190),
+    Font = Enum.Font.Code, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left,
     TextTruncate = Enum.TextTruncate.AtEnd,
     BackgroundTransparency = 1,
 })
@@ -2591,33 +2664,34 @@ local shrink = arcadeButton(shell, "−", UDim2.new(1, -40, 0, 9), UDim2.fromOff
 local zoomOut = arcadeButton(shell, "A−", UDim2.new(1, -108, 0, 9), UDim2.fromOffset(30, 28))
 local zoomIn = arcadeButton(shell, "A+", UDim2.new(1, -74, 0, 9), UDim2.fromOffset(30, 28))
 local nav = make("Frame", shell, {
-    Position = UDim2.fromOffset(0, 58), Size = UDim2.new(0, 166, 1, -89),
-    BackgroundColor3 = Color3.fromRGB(35, 31, 65), BorderSizePixel = 0,
+    Position = UDim2.fromOffset(0, 58), Size = UDim2.new(0, 180, 1, -89),
+    BackgroundColor3 = Color3.fromRGB(13, 23, 31), BorderSizePixel = 0,
 })
 round(nav, 8)
+make("UIStroke", nav, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.42 })
 make("TextLabel", nav, {
     Position = UDim2.fromOffset(13, 9), Size = UDim2.new(1, -26, 0, 25),
-    BackgroundTransparency = 1, Text = "ÁREA DE TRABALHO", TextSize = 10,
-    Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(165, 180, 208),
+    BackgroundTransparency = 1, Text = "SYSTEM // MODULES", TextSize = 10,
+    Font = Enum.Font.Code, TextColor3 = Color3.fromRGB(111, 156, 162),
     TextXAlignment = Enum.TextXAlignment.Left,
 })
 local content = make("Frame", shell, {
-    Position = UDim2.fromOffset(179, 64), Size = UDim2.new(1, -192, 1, -103),
+    Position = UDim2.fromOffset(194, 64), Size = UDim2.new(1, -207, 1, -103),
     BackgroundTransparency = 1,
 })
 do
     local function divider(position, size)
         make("Frame", shell, {
             Name = "Divider", Position = position, Size = size,
-            BackgroundColor3 = Color3.fromRGB(53, 61, 78), BorderSizePixel = 0,
+            BackgroundColor3 = Color3.fromRGB(39, 68, 73), BorderSizePixel = 0,
         })
     end
     divider(UDim2.fromOffset(0, 57), UDim2.new(1, 0, 0, 1))
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "V63   /   CENTRAL DE OVOS", Font = Enum.Font.GothamBold, TextSize = 10,
-        TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
+        Text = "NEXUS OS  //  BUILD 64.0  ·  LOCAL SESSION", Font = Enum.Font.Code, TextSize = 10,
+        TextColor3 = Color3.fromRGB(111, 156, 162), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
 end
@@ -2634,7 +2708,7 @@ asPage(eggsPanel)
 minimize:Destroy()
 eggsToggle:Destroy()
 hideEggs:Destroy()
-title.Text = "Esquiva"
+title.Text = "DODGE // BOSS DEFENSE"
 do
     for index, label in ipairs({ "− 2", "Padrão", "+ 2" }) do
         local button = arcadeButton(panel, label, UDim2.new((index - 1) / 3, 8, 0, 160),
@@ -2657,13 +2731,14 @@ eggsTitle.Text = "Coleta e ovos"
 
 local function settingsPage(heading, description)
     local page = make("Frame", content, {
-        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(15, 15, 31), BorderSizePixel = 0,
+        Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(7, 13, 19), BorderSizePixel = 0,
     })
     round(page, 8)
+    make("UIStroke", page, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.45 })
     make("TextLabel", page, {
         Position = UDim2.fromOffset(12, 7), Size = UDim2.new(1, -24, 0, 28),
-        Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(224, 241, 255),
-        TextSize = 16, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+        Text = heading, BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(62, 255, 190),
+        TextSize = 17, Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left,
     })
     if description then
         local card = make("Frame", page, {
@@ -2671,11 +2746,12 @@ local function settingsPage(heading, description)
             Size = UDim2.new(1, -16, 0, 62), BorderSizePixel = 0,
         })
         round(card, 9)
+        make("UIStroke", card, { Color = Color3.fromRGB(43, 79, 83), Thickness = 1, Transparency = 0.5 })
         make("TextLabel", page, {
             Position = UDim2.fromOffset(12, 45), Size = UDim2.new(1, -24, 0, 56),
             Text = description, TextWrapped = true, BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(219, 231, 249), TextSize = 13,
-            Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
+            TextColor3 = Color3.fromRGB(177, 204, 210), TextSize = 13,
+            Font = Enum.Font.Code, TextXAlignment = Enum.TextXAlignment.Left,
         })
     end
     return page
@@ -2728,7 +2804,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V63] " .. tostring(reason or count))
+        warn("[Inventário V64] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -2754,7 +2830,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V63] " .. tostring(ran and reason or count))
+                    warn("[Depósito V64] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -2788,7 +2864,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V63] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V64] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -2817,7 +2893,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V63] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V64] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
@@ -2843,7 +2919,7 @@ local cornersButton = arcadeButton(looksPage, "Cantos", UDim2.new(.5, 4, 0, 224)
 local resetLooks = arcadeButton(looksPage, "Restaurar aparência padrão", UDim2.fromOffset(12, 266), UDim2.new(1, -24, 0, 32))
 local compact, zoom = false, 1
 local function layoutShell()
-    local width, height = 820, 465
+    local width, height = 870, 500
     if compact then width, height = 178, 58 end
     shell.Size = UDim2.fromOffset(width, height)
     local view = gui.AbsoluteSize
@@ -2855,7 +2931,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = "Central de Ovos"
+    header.Text = compact and "NEXUS // OPS" or "NEXUS // ARCADE OPS"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, 40)
     content.Visible = not compact
     nav.Visible = not compact
@@ -2889,7 +2965,7 @@ local function showPage(index)
     for i, entry in ipairs(pages) do
         entry[2].Visible = i == index
         entry[3].Text = "   " .. entry[4] .. "   " .. entry[1]
-        entry[3].TextColor3 = i == index and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(192, 201, 217)
+        entry[3].TextColor3 = i == index and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(151, 178, 185)
         entry[3].BackgroundColor3 = i == index and palette[4] or palette[2]
     end
     if index == 2 then refreshEggs() end
@@ -2942,16 +3018,17 @@ local function paint(object)
         object.CornerRadius = UDim.new(0, appearance.radius)
     elseif object:IsA("UIStroke") then
         object.Color = accent
-        object.Transparency = .65
+        object.Transparency = .42
     elseif object:IsA("UIGradient") then
         object.Enabled = false
     elseif object:IsA("TextButton") then
         object.BackgroundColor3 = palette[4]
-    elseif object == nav or (object:IsA("Frame") and object.Name == "CollectionSurface") then
+        object.TextColor3 = Color3.fromRGB(222, 243, 244)
+    elseif object == nav or (object:IsA("Frame") and (object.Name == "CollectionSurface" or object.Parent == list)) then
         object.BackgroundColor3 = palette[3]
         object.BackgroundTransparency = 1 - appearance.opacity
-    elseif object == collectionStatus or (object:IsA("Frame") and object.Parent == list) then
-        object.BackgroundColor3 = palette[2]
+    elseif object == collectionStatus then
+        object.BackgroundColor3 = palette[3]
     elseif object == header or object == title or object == eggsTitle or object == areaLabel then
         object.TextColor3 = accent
     end
@@ -2965,7 +3042,7 @@ local function repaint()
     local palette = palettes[themeIndex]
     for index, entry in ipairs(pages) do
         entry[3].BackgroundColor3 = index == selectedPage and palette[4] or palette[2]
-        entry[3].TextColor3 = index == selectedPage and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(192, 201, 217)
+        entry[3].TextColor3 = index == selectedPage and (accentColors[appearance.accent - 1] or palette[5]) or Color3.fromRGB(151, 178, 185)
     end
 end
 theme.Activated:Connect(function()
