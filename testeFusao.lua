@@ -22,7 +22,7 @@ local function control(class, text, y)
 end
 
 local test = control("TextButton", "Ir à máquina e testar 1 fusão", 0)
-local status = control("TextLabel", "Comece na base, na frente do celeiro.", 46)
+local status = control("TextLabel", "Comece na base, perto da área de lançamento.", 46)
 local badge = { H = "HYPER", M = "MEGA", U = "ULTRA" }
 local nextTier = { BASE = "HYPER", HYPER = "MEGA", MEGA = "ULTRA" }
 local busy, uncertain = false, false
@@ -113,72 +113,36 @@ local function openMachine()
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if not root or not humanoid then return false, "Personagem indisponível." end
-    local route = {
-        Vector3.new(-44, 3, 135), Vector3.new(-39.5, 3, 120.2),
-        Vector3.new(-32.8, 3, 100.6), Vector3.new(-25.4, 3, 86.7),
-        Vector3.new(-14.9, 3, 69.1), Vector3.new(-5.5, 3.4, 55.8),
-        Vector3.new(3, 3, 47.2), Vector3.new(15.6, 3, 37.7),
-        Vector3.new(25.6, 3, 31.7), Vector3.new(31.7, 3, 29.9),
-        Vector3.new(28.7, 3, 39.6),
-    }
-    local function valid()
-        return gui.Parent and root.Parent and player.Character == character
-    end
-    local function walkTo(point, tolerance)
-        if not valid() then return false end
-        humanoid:MoveTo(point)
-        local deadline = os.clock() + 3
-        repeat
-            if (root.Position - point).Magnitude <= (tolerance or 2.5) then return true end
-            task.wait(.1)
-        until not valid() or os.clock() >= deadline
-        return false
-    end
-    local function detour(point)
-        local service = game:GetService("PathfindingService")
-        for _ = 1, 2 do
-            if not valid() then return false end
-            local path = service:CreatePath()
-            local computed = pcall(function() path:ComputeAsync(root.Position, point) end)
-            if computed and path.Status == Enum.PathStatus.Success then
-                for _, waypoint in ipairs(path:GetWaypoints()) do
-                    if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
-                    if not walkTo(waypoint.Position) then break end
-                end
-                if (root.Position - point).Magnitude <= 2.5 then return true end
-            end
-        end
-        return false
-    end
-
     local prompt, point = machinePrompt(root)
+    if not prompt then return false, "Aviso da máquina não encontrado. Comece perto da área de lançamento." end
     local function inReach()
-        return prompt and point and (root.Position - point).Magnitude <= prompt.MaxActivationDistance - .25
+        return (root.Position - point).Magnitude <= prompt.MaxActivationDistance
     end
     if not inReach() then
-        local first, best = 1, math.huge
-        for index, waypoint in ipairs(route) do
-            local gap = (root.Position - waypoint).Magnitude
-            if gap < best then first, best = index, gap end
-        end
-        for index = first, #route do
-            status.Text = string.format("Indo à máquina · ponto %d/%d", index, #route)
-            local waypoint = route[index]
-            local tolerance = index == #route and .4 or 2.5
-            if not walkTo(waypoint, tolerance) then
-                status.Text = "Tentando contornar obstáculo..."
-                if not detour(waypoint) or not walkTo(waypoint, tolerance) then
-                    if valid() then humanoid:MoveTo(root.Position) end
-                    return false, string.format("Rota bloqueada no ponto %d/%d. X=%.1f Z=%.1f.",
-                        index, #route, root.Position.X, root.Position.Z)
-                end
+        status.Text = "Indo até a máquina..."
+        local offset = root.Position - point
+        local flat = Vector3.new(offset.X, 0, offset.Z)
+        local goal = point + (flat.Magnitude > .1 and flat.Unit or Vector3.zero)
+            * math.max(1, prompt.MaxActivationDistance * .55)
+        local path = game:GetService("PathfindingService"):CreatePath()
+        path:ComputeAsync(root.Position, goal)
+        if path.Status ~= Enum.PathStatus.Success then return false, "Sem rota até a máquina." end
+        for _, waypoint in ipairs(path:GetWaypoints()) do
+            if inReach() then break end
+            if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+            humanoid:MoveTo(waypoint.Position)
+            if not waitFor(function()
+                return inReach() or (root.Position - waypoint.Position).Magnitude <= 3
+            end) then
+                humanoid:MoveTo(root.Position)
+                return false, "Caminhada interrompida antes da máquina."
             end
         end
         humanoid:MoveTo(root.Position)
-        prompt, point = machinePrompt(root)
     end
-    if not inReach() or not valid() or not prompt.Enabled or not prompt:IsDescendantOf(workspace) then
-        return false, "Cheguei ao fim da rota, mas o aviso da máquina está fora de alcance."
+    if not inReach() or not prompt.Enabled or not prompt:IsDescendantOf(workspace)
+        or not gui.Parent or player.Character ~= character then
+        return false, "Aviso da máquina fora de alcance."
     end
     status.Text = "Abrindo a máquina..."
     prompt:InputHoldBegin()
