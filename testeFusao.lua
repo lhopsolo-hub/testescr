@@ -35,6 +35,10 @@ local function visible(object)
     return object == playerGui
 end
 
+local function normalize(text)
+    return (text:gsub("\194\160", " "):gsub("%s+", " "):match("^%s*(.-)%s*$"))
+end
+
 local function readCards(list)
     local cards = {}
     for _, card in ipairs(list:GetChildren()) do
@@ -43,7 +47,7 @@ local function readCards(list)
             local image = card:FindFirstChild("PetImage")
             for _, label in ipairs(card:GetDescendants()) do
                 if label:IsA("TextLabel") and visible(label) then
-                    local text = label.Text:match("^%s*(.-)%s*$")
+                    local text = normalize(label.ContentText)
                     local quantity = text:match("^x(%d+)")
                     if quantity then
                         count = tonumber(quantity)
@@ -121,20 +125,32 @@ test.Activated:Connect(function(input)
         status.Text = "Selecionando " .. selection
         firesignal(source.button.Activated, input, 1)
 
+        local observedSelection, observedAction
         local function selectionMatches()
-            if not visible(face) or not face.Active or not face.Interactable then return false end
+            observedSelection, observedAction = nil, nil
             local selected, action = false, false
             for _, label in ipairs(details:GetDescendants()) do
-                if label:IsA("TextLabel") and visible(label) then
-                    if label.Text == selection then selected = true end
-                    if label:IsDescendantOf(face) and label.Text:upper() == "FUNDIR EM " .. targetTier then
-                        action = true
+                if (label:IsA("TextLabel") or label:IsA("TextButton")) and visible(label) then
+                    local text = normalize(label.ContentText)
+                    local pet, count, required = text:match("^(.-)%s*%(%s*(%d+)%s*/%s*(%d+)%s*%)$")
+                    if pet then
+                        observedSelection = text
+                        selected = selected or (normalize(pet):upper() == name:upper()
+                            and tonumber(count) == source.count and tonumber(required) == 4)
+                    end
+                    if (label == face or label:IsDescendantOf(face)) and text ~= "" then
+                        observedAction = text
+                        action = action or text:upper() == "FUNDIR EM " .. targetTier
                     end
                 end
             end
-            return selected and action
+            return selected and action and visible(face) and face.Interactable
         end
-        if not waitFor(selectionMatches) then return "Seleção não confirmada. Nenhuma fusão acionada." end
+        if not waitFor(selectionMatches) then
+            return string.format("Esperava %s → %s. Vi %s | %s | botão %s.",
+                selection, targetTier, observedSelection or "sem seleção", observedAction or "sem texto",
+                visible(face) and face.Interactable and "disponível" or "indisponível")
+        end
 
         status.Text = "Fundindo " .. name .. " em " .. targetTier .. "..."
         uncertain = true
