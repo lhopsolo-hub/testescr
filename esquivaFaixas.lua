@@ -31,7 +31,7 @@ local function control(class, text, y, height)
         BackgroundColor3 = Color3.fromRGB(157, 31, 40), BorderSizePixel = 0,
     })
 end
-local title = control("TextLabel", "ESQUIVA DO BOSS · V70", 5, 30)
+local title = control("TextLabel", "ESQUIVA DO BOSS · V71", 5, 30)
 title.Size = UDim2.new(1, -49, 0, 30)
 title.TextXAlignment = Enum.TextXAlignment.Left
 local minimize = control("TextButton", "−", 6, 28)
@@ -80,7 +80,7 @@ local function applySpeed(session)
     if session.slowArea and humanoid.WalkSpeed <= 5 then
         if not session.slowed then
             session.slowed = true
-            print("[Esquiva V70] " .. session.slowArea .. " · lentidão detectada")
+            print("[Esquiva V71] " .. session.slowArea .. " · lentidão detectada")
         end
         return
     end
@@ -98,7 +98,7 @@ local function applySpeed(session)
         humanoid.WalkSpeed = desired
         session.appliedSpeed = desired
         if recovered then
-            print(string.format("[Esquiva V70] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
+            print(string.format("[Esquiva V71] %s · velocidade retomada %.1f -> %.1f", session.slowArea, session.originalSpeed, desired))
         end
     end
     if session.walking then
@@ -119,7 +119,7 @@ local function finish(session, message)
     toggle.Text = enabled and "Desligar esquiva" or "Ligar esquiva"
     status.Text = string.format("%s · %d esquivas\n%d quedas · %.2f HP perdido",
         message, session.moves, session.hits, session.damage)
-    print(string.format("[Esquiva V70] %s | última rota a pé %.1f studs",
+    print(string.format("[Esquiva V71] %s | última rota a pé %.1f studs",
         status.Text, session.lastDistance))
 end
 
@@ -739,7 +739,7 @@ local function sakuraRefuge(root, humanoid, parts, folder, eventFX, bounds, sess
                 local radius = sakuraGroundDisk(part, origin)
                 if radius then
                     if not disks[part] then
-                        print(string.format("[Sakura V70] Círculo vermelho · centro %s · raio visual %.1f",
+                        print(string.format("[Sakura V71] Círculo vermelho · centro %s · raio visual %.1f",
                             tostring(part.Position), radius))
                     end
                     disks[part] = {center = part.Position, radius = radius, frame = part.CFrame,
@@ -857,7 +857,7 @@ local function sakuraWideAttack(parts, folder, origin, bossPosition, session, no
 
     if marker then
         if now >= (session.sakuraWideUntil or 0) then
-            print("[Sakura V70] Ataque dos círculos claros · fuga em velocidade dobrada")
+            print("[Sakura V71] Ataque dos círculos claros · fuga em velocidade dobrada")
         end
         session.sakuraWideMarker = marker
         session.sakuraWideUntil = now + .55
@@ -1195,7 +1195,7 @@ local function startFight()
                         end
                     end
                     session.crossedWalls = (session.crossedWalls or 0) + 1
-                    print(string.format("[Esquiva V70] Travessia pelo vão concluída (%d)", session.crossedWalls))
+                    print(string.format("[Esquiva V71] Travessia pelo vão concluída (%d)", session.crossedWalls))
                     session.passage, session.passageTarget, session.passageDirection, session.passageWall = nil, nil, nil, nil
                 end
                 local passage, passageTarget, passageDirection, passageWall
@@ -1391,7 +1391,7 @@ local function startFight()
                 if circleEscaped then circleStatus = "Círculo · teleporte solicitado" end
                 if circleStatus then
                     message = circleStatus
-                    if circleStatus ~= session.circleStatus then print("[Círculo V70] " .. circleStatus) end
+                    if circleStatus ~= session.circleStatus then print("[Círculo V71] " .. circleStatus) end
                 end
                 session.circleStatus = circleStatus
                 status.Text = string.format("HP %.2f · Ondas %d · Quedas %d\n%s · %.0f studs",
@@ -2468,7 +2468,7 @@ local function performPlacement(character, root, pen, name, previousTools, previ
                 end
             end
         else
-            warn(string.format("[Colocação V70] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
+            warn(string.format("[Colocação V71] Alvo a %.2f studs após caminhar", horizontalDistance(root.Position, target)))
         end
     end
 
@@ -2589,7 +2589,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             if removed == 0 then break end
         end
         if attempts > 0 then
-            print(string.format("[Auto Chocar V70] Botão · %d tentativas · %d eclosões observadas · %.2f s",
+            print(string.format("[Auto Chocar V71] Botão · %d tentativas · %d eclosões observadas · %.2f s",
                 attempts, total, os.clock() - started))
         end
         hatched = total
@@ -2607,7 +2607,7 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         end
         local face = hatchFace()
         if not candidate and not face then return true, nil, hatched end
-        print(string.format("[Eclosão V70] %s | prompt=%s | botão=%s | ovos=%s",
+        print(string.format("[Eclosão V71] %s | prompt=%s | botão=%s | ovos=%s",
             standaloneAuto and "auto independente" or (auto and "ciclo" or "manual"),
             candidate and string.format("%.1f studs", nearest) or "indisponível",
             face and "visível" or "oculto", tostring(player:GetAttribute("PenEggs"))))
@@ -2634,14 +2634,14 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
             while allowed() and candidate.Parent and os.clock() < deadline do task.wait(.04) end
             pcall(function() candidate:InputHoldEnd() end)
             success = waitConfirmation(1.5)
-            print("[Eclosão V70] Prompt confirmado=" .. tostring(success == true))
+            print("[Eclosão V71] Prompt confirmado=" .. tostring(success == true))
         end
         if not success and allowed() then
             local face = hatchFace()
             if face then
                 local sent, problem = signalFace(face, input, clicks)
                 if sent then success = waitConfirmation(2) end
-                print("[Eclosão V70] Botão confirmado=" .. tostring(success == true)
+                print("[Eclosão V71] Botão confirmado=" .. tostring(success == true)
                     .. (problem and " | " .. problem or ""))
             end
         end
@@ -2649,6 +2649,338 @@ local function hatchReady(root, pen, input, clicks, standaloneAuto)
         hatched = hatched + 1
     end
     return false, "Eclosão interrompida.", hatched
+end
+
+local autoFusion = false
+local runAutoFusion
+do
+local badge = { H = "HYPER", M = "MEGA", U = "ULTRA" }
+local nextTier = { BASE = "HYPER", HYPER = "MEGA", MEGA = "ULTRA" }
+local function normalize(text)
+    return (text:gsub("\194\160", " "):gsub("%s+", " "):match("^%s*(.-)%s*$"))
+end
+
+local function readCards(list)
+    local cards = {}
+    for _, card in ipairs(list:GetChildren()) do
+        if card:IsA("GuiButton") and visibleControl(card) then
+            local name, count, ready, tier
+            local image = card:FindFirstChild("PetImage")
+            for _, label in ipairs(card:GetDescendants()) do
+                if label:IsA("TextLabel") and visibleControl(label) then
+                    local text = normalize(label.ContentText)
+                    local quantity = text:match("^x(%d+)")
+                    if quantity then
+                        count = tonumber(quantity)
+                        ready = text:find("PRONTO", 1, true) ~= nil
+                    elseif badge[text] then
+                        tier = badge[text]
+                    elseif text ~= "" then
+                        name = text
+                    end
+                end
+            end
+            if name and count and image and image:IsA("ImageLabel") and image.Image ~= "" then
+                cards[#cards + 1] = { button = card, name = name, count = count,
+                    ready = ready, tier = tier or "BASE", image = image.Image }
+            end
+        end
+    end
+    return cards
+end
+
+local function group(cards, source, tier)
+    local count, matches = 0, 0
+    for _, card in ipairs(cards) do
+        if card.name == source.name and card.image == source.image and card.tier == tier then
+            count, matches = card.count, matches + 1
+        end
+    end
+    return count, matches
+end
+
+local function waitFusion(check)
+    local deadline = os.clock() + 5
+    repeat
+        if not gui.Parent or not auto then return false end
+        if check() then return true end
+        task.wait(.1)
+    until os.clock() >= deadline
+    return false
+end
+
+local function machinePrompt(root)
+    local nearest, target, distance
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("ProximityPrompt") and object.Enabled
+            and normalize(object.ObjectText):lower() == "máquina de fusão"
+            and normalize(object.ActionText):lower() == "abrir" then
+            local parent = object.Parent
+            local point = parent and ((parent:IsA("Attachment") and parent.WorldPosition)
+                or (parent:IsA("BasePart") and parent.Position)
+                or (parent:IsA("Model") and parent:GetPivot().Position))
+            if point then
+                local gap = (root.Position - point).Magnitude
+                if not distance or gap < distance then nearest, target, distance = object, point, gap end
+            end
+        end
+    end
+    return nearest, target
+end
+
+local function openMachine()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid then return false, "Personagem indisponível." end
+    local route = {
+        Vector3.new(-44, 3, 135), Vector3.new(-39.5, 3, 120.2),
+        Vector3.new(-32.8, 3, 100.6), Vector3.new(-25.4, 3, 86.7),
+        Vector3.new(-14.9, 3, 69.1), Vector3.new(-5.5, 3.4, 55.8),
+        Vector3.new(3, 3, 47.2), Vector3.new(15.6, 3, 37.7),
+        Vector3.new(25.6, 3, 31.7), Vector3.new(31.7, 3, 29.9),
+        Vector3.new(28.7, 3, 39.6),
+    }
+    local function valid()
+        return auto and gui.Parent and root.Parent and player.Character == character
+    end
+    local function walkTo(point, tolerance)
+        if not valid() then return false end
+        humanoid:MoveTo(point)
+        local deadline = os.clock() + 3
+        repeat
+            if (root.Position - point).Magnitude <= (tolerance or 2.5) then return true end
+            task.wait(.1)
+        until not valid() or os.clock() >= deadline
+        return false
+    end
+    local function detour(point)
+        local service = game:GetService("PathfindingService")
+        for _ = 1, 2 do
+            if not valid() then return false end
+            local path = service:CreatePath()
+            local computed = pcall(function() path:ComputeAsync(root.Position, point) end)
+            if computed and path.Status == Enum.PathStatus.Success then
+                for _, waypoint in ipairs(path:GetWaypoints()) do
+                    if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+                    if not walkTo(waypoint.Position) then break end
+                end
+                if (root.Position - point).Magnitude <= 2.5 then return true end
+            end
+        end
+        return false
+    end
+
+    local prompt, point = machinePrompt(root)
+    local function inReach()
+        return prompt and point and (root.Position - point).Magnitude <= prompt.MaxActivationDistance - .25
+    end
+    if not inReach() then
+        local first, best = 1, math.huge
+        for index, waypoint in ipairs(route) do
+            local gap = (root.Position - waypoint).Magnitude
+            if gap < best then first, best = index, gap end
+        end
+        for index = first, #route do
+            collectionStatus.Text = string.format("Indo à máquina · ponto %d/%d", index, #route)
+            local waypoint = route[index]
+            local tolerance = index == #route and .4 or 2.5
+            if not walkTo(waypoint, tolerance) then
+                collectionStatus.Text = "Tentando contornar obstáculo..."
+                if not detour(waypoint) or not walkTo(waypoint, tolerance) then
+                    if valid() then humanoid:MoveTo(root.Position) end
+                    return false, string.format("Rota bloqueada no ponto %d/%d. X=%.1f Z=%.1f.",
+                        index, #route, root.Position.X, root.Position.Z)
+                end
+            end
+        end
+        humanoid:MoveTo(root.Position)
+        prompt, point = machinePrompt(root)
+    end
+    if not inReach() or not valid() or not prompt.Enabled or not prompt:IsDescendantOf(workspace) then
+        return false, "Cheguei ao fim da rota, mas o aviso da máquina está fora de alcance."
+    end
+    collectionStatus.Text = "Abrindo a máquina..."
+    prompt:InputHoldBegin()
+    task.wait(prompt.HoldDuration + .1)
+    prompt:InputHoldEnd()
+    if not waitFusion(function()
+        local fusion = guiParent:FindFirstChild("Fusion")
+        local panel = fusion and fusion:FindFirstChild("Panel")
+        return panel and visibleControl(panel)
+    end) then
+        return false, "O jogo não confirmou a abertura da máquina."
+    end
+    return true
+end
+
+local function fuseOne(input)
+        local fusion = guiParent:FindFirstChild("Fusion")
+        local panel = fusion and fusion:FindFirstChild("Panel")
+        if not panel or not visibleControl(panel) then
+            local opened, reason = openMachine()
+            if not opened then return false, reason end
+            fusion = guiParent:FindFirstChild("Fusion")
+            panel = fusion and fusion:FindFirstChild("Panel")
+        end
+        local body = panel and panel:FindFirstChild("Body")
+        local list = body and body:FindFirstChild("ScrollingFrame")
+        local details = body and body:FindFirstChild("Frame")
+        local wrapper = details and details:FindFirstChild("Button")
+        local face = wrapper and wrapper:FindFirstChild("Face")
+        if not list or not face or not face:IsA("GuiButton") or not visibleControl(face) then
+            return false, "Painel da máquina indisponível."
+        end
+        if type(firesignal) ~= "function" then return false, "Ativação indisponível nesta versão do Delta." end
+
+        local cards = readCards(list)
+        table.sort(cards, function(a, b) return a.button.LayoutOrder < b.button.LayoutOrder end)
+        local source, targetTier, targetBefore
+        for _, card in ipairs(cards) do
+            local tier = nextTier[card.tier]
+            if tier and card.count >= 4 and card.ready and card.button.Interactable then
+                local _, sourceMatches = group(cards, card, card.tier)
+                local count, targetMatches = group(cards, card, tier)
+                if sourceMatches == 1 and targetMatches <= 1 then
+                    source, targetTier, targetBefore = card, tier, count
+                    break
+                end
+            end
+        end
+        if not source then
+            for _, card in ipairs(cards) do
+                if card.count >= 4 and card.ready and nextTier[card.tier] then
+                    return false, "Grupo pronto sem identificação inequívoca."
+                end
+            end
+            if #cards == 0 then return false, "Lista da máquina vazia ou indisponível." end
+            return true, nil, false
+        end
+
+        local name = source.tier == "BASE" and source.name or (source.tier .. " " .. source.name)
+        local selection = string.format("%s (%d/4)", name, source.count)
+        collectionStatus.Text = "Selecionando " .. selection
+        firesignal(source.button.Activated, input, 1)
+
+        local observedSelection, observedAction
+        local function selectionMatches()
+            observedSelection, observedAction = nil, nil
+            local selected, action = false, false
+            for _, label in ipairs(details:GetDescendants()) do
+                if (label:IsA("TextLabel") or label:IsA("TextButton")) and visibleControl(label) then
+                    local text = normalize(label.ContentText)
+                    local pet, count, required = text:match("^(.-)%s*%(%s*(%d+)%s*/%s*(%d+)%s*%)$")
+                    if pet then
+                        observedSelection = text
+                        selected = selected or (normalize(pet):upper() == name:upper()
+                            and tonumber(count) == source.count and tonumber(required) == 4)
+                    end
+                    if (label == face or label:IsDescendantOf(face)) and text ~= "" then
+                        observedAction = text
+                        action = action or text:upper() == "FUNDIR EM " .. targetTier
+                    end
+                end
+            end
+            return selected and action and visibleControl(face) and face.Interactable
+        end
+        if not waitFusion(selectionMatches) then
+            return false, string.format("Esperava %s → %s. Vi %s | %s | botão %s.",
+                selection, targetTier, observedSelection or "sem seleção", observedAction or "sem texto",
+                visibleControl(face) and face.Interactable and "disponível" or "indisponível")
+        end
+
+        collectionStatus.Text = "Fundindo " .. name .. " em " .. targetTier .. "..."
+        if not auto or not gui.Parent then return false, "Ciclo desligado." end
+        firesignal(face.Activated, input, 1)
+        if not waitFusion(function()
+            if not visibleControl(list) then return false end
+            local current = readCards(list)
+            local sourceCount, sourceMatches = group(current, source, source.tier)
+            local targetCount, targetMatches = group(current, source, targetTier)
+            return sourceMatches <= 1 and sourceCount == source.count - 4
+                and targetMatches == 1 and targetCount == targetBefore + 1
+        end) then
+            return false, "Resultado incerto. Confira a máquina antes de reiniciar."
+        end
+        return true, nil, true
+end
+
+local function inventoryList()
+    local inventory = guiParent:FindFirstChild("Inventory")
+    local frame = inventory and inventory:FindFirstChild("Frame")
+    return frame and frame:FindFirstChild("ScrollingFrame")
+end
+
+local function hasFusionGroup(list)
+    local groups = {}
+    for _, card in ipairs(list:GetChildren()) do
+        if card:IsA("GuiButton") and visibleControl(card) then
+            local image = card:FindFirstChild("PetImage")
+            if image and image:IsA("ImageLabel") and image.Image ~= "" then
+                local tier, mutations = "BASE", {}
+                for _, node in ipairs(card:GetDescendants()) do
+                    if visibleControl(node) then
+                        if node:IsA("TextLabel") then
+                            tier = badge[normalize(node.ContentText)] or tier
+                        elseif node:IsA("ImageLabel") and node.Name:sub(1, 4) == "Mut_" then
+                            mutations[#mutations + 1] = node.Name
+                        end
+                    end
+                end
+                if nextTier[tier] then
+                    table.sort(mutations)
+                    local key = image.Image .. "|" .. tier .. "|" .. table.concat(mutations, ",")
+                    groups[key] = (groups[key] or 0) + 1
+                    if groups[key] >= 4 then return true end
+                end
+            end
+        end
+    end
+    return false
+end
+
+runAutoFusion = function(input, clicks)
+    local list = inventoryList()
+    if not list or not visibleControl(list) then
+        local open = findFace(guiParent:FindFirstChild("HUD"), "Pets")
+        if not open or not signalFace(open, input, clicks) then
+            return false, "Botão Pets indisponível."
+        end
+        if not waitFusion(function()
+            list = inventoryList()
+            return list and visibleControl(list)
+        end) then return false, "Abertura do inventário de pets não confirmada." end
+        task.wait(.35)
+    end
+    local ready = hasFusionGroup(list)
+    local inventory = guiParent:FindFirstChild("Inventory")
+    local close = findFace(inventory and inventory:FindFirstChild("Frame"), "X")
+        or findFace(guiParent:FindFirstChild("HUD"), "Pets")
+    if not close or not signalFace(close, input, clicks)
+        or not waitFusion(function() return not visibleControl(list) end) then
+        return false, "Fechamento do menu Pets não confirmado."
+    end
+    if not ready then return true end
+
+    local total = 0
+    while auto and gui.Parent do
+        local ok, reason, fused = fuseOne(input)
+        if not ok then return false, reason end
+        if not fused then
+            local fusion = guiParent:FindFirstChild("Fusion")
+            local panel = fusion and fusion:FindFirstChild("Panel")
+            local close = findFace(panel and panel:FindFirstChild("Frame"), "X")
+            if not close or not signalFace(close, input, clicks)
+                or not waitFusion(function() return not visibleControl(panel) end) then
+                return false, "Fechamento da máquina não confirmado."
+            end
+            collectionStatus.Text = string.format("Fusão · %d confirmada(s)", total)
+            return true
+        end
+        total = total + 1
+    end
+    return false, "Ciclo desligado."
+end
 end
 
 local looping = false
@@ -2676,7 +3008,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 local deposited, problem = placeInPen(character, root, pen, item.name,
                     item.previousTools, item.previousSlots, input, clicks, selected)
                 if not deposited then
-                    warn("[Colocação V70] " .. tostring(problem) .. " · próxima coleta bloqueada")
+                    warn("[Colocação V71] " .. tostring(problem) .. " · próxima coleta bloqueada")
                     return false, problem
                 end
             end
@@ -2687,7 +3019,7 @@ autoButton.Activated:Connect(function(input, clicks)
             end
             if auto and autoDeposit and pen then
                 local _, problem = depositInventory(character, root, pen, input, clicks)
-                if problem then warn("[Inventário V70] " .. problem) end
+                if problem then warn("[Inventário V71] " .. problem) end
             end
             return true, autoDeposit and "Ovo colocado · próxima rodada" or "Depósito desligado · próxima rodada"
         end
@@ -2697,6 +3029,12 @@ autoButton.Activated:Connect(function(input, clicks)
             if not root then return false, "Aguardando personagem" end
             if carryingEgg() then return false, "Aguardando fim do transporte" end
             if pendingDeposit then return finishDeposit(character, root) end
+            if autoFusion and root.Position.Z > -50 and not active and not hatching and not depositing then
+                local ran, fused, problem = pcall(runAutoFusion, input, clicks)
+                if not ran or not fused then
+                    return false, "Fusão pausada · " .. tostring(ran and problem or fused), false, true
+                end
+            end
             if root.Position.Z > -50 or not inEggZone(root.Position, zoneNumber) then
                 local launched, problem = launchZone(character, root, input, clicks,
                     function() return auto and gui.Parent end, zoneNumber)
@@ -2788,7 +3126,7 @@ autoButton.Activated:Connect(function(input, clicks)
                 failures = failures + 1
                 local detail = ok and reason or tostring(success)
                 collectionStatus.Text = tostring(detail) .. " · tentando novamente"
-                if not ok then warn("[Auto Coletar V70] " .. detail) end
+                if not ok then warn("[Auto Coletar V71] " .. detail) end
             end
             autoButton.Text = pendingDeposit and autoDeposit and "AUTO ON  /  DEPÓSITO"
                 or (rareHunt and string.format("AUTO ON  /  %d/%d", releases, MAX_EGG_RELEASES) or "AUTO ON")
@@ -2905,7 +3243,7 @@ local header = make("TextLabel", shell, {
 })
 local terminalSubtitle = make("TextLabel", shell, {
     Position = UDim2.fromOffset(20, 36), Size = UDim2.new(1, -155, 0, 15),
-    Text = "TERMINAL DE OPERAÇÕES   /   BUILD 70", TextSize = 10,
+    Text = "TERMINAL DE OPERAÇÕES   /   BUILD 71", TextSize = 10,
     TextColor3 = Color3.fromRGB(143, 172, 189), BackgroundTransparency = 1,
     TextXAlignment = Enum.TextXAlignment.Left,
 })
@@ -2946,7 +3284,7 @@ do
     divider(UDim2.new(0, 0, 1, -31), UDim2.new(1, 0, 0, 1))
     make("TextLabel", shell, {
         Position = UDim2.new(0, 14, 1, -29), Size = UDim2.new(1, -28, 0, 26),
-        Text = "SYS.70   /   AUTOMAÇÃO   /   CONTROLE LOCAL", Font = Enum.Font.GothamBold, TextSize = 10,
+        Text = "SYS.71   /   AUTOMAÇÃO   /   CONTROLE LOCAL", Font = Enum.Font.GothamBold, TextSize = 10,
         TextColor3 = Color3.fromRGB(160, 173, 192), BackgroundTransparency = 1,
         TextXAlignment = Enum.TextXAlignment.Left,
     })
@@ -3056,7 +3394,7 @@ depositNow.Activated:Connect(function(input, clicks)
     depositing = false
     if not gui.Parent then return end
     if not ok or reason then
-        warn("[Inventário V70] " .. tostring(reason or count))
+        warn("[Inventário V71] " .. tostring(reason or count))
         depositNow.Text = "Colocação não confirmada · veja console"
     elseif count == 0 then
         depositNow.Text = "Nenhum ovo identificado · tentar novamente"
@@ -3082,7 +3420,7 @@ task.spawn(function()
                 if not autoDeposit then
                     depositNow.Text = "Colocar ovos do inventário"
                 elseif not ran or reason then
-                    warn("[Depósito V70] " .. tostring(ran and reason or count))
+                    warn("[Depósito V71] " .. tostring(ran and reason or count))
                     depositNow.Text = "Entre no cercado · aguardando confirmação"
                     retryAt = os.clock() + 1
                 else
@@ -3116,7 +3454,7 @@ hatchNow.Activated:Connect(function(input, clicks)
     hatching = false
     if not gui.Parent then return end
     if not ran or not ok then
-        warn("[Eclosão V70] " .. tostring(ran and reason or ok))
+        warn("[Eclosão V71] " .. tostring(ran and reason or ok))
         hatchNow.Text = "Eclosão não confirmada · veja console"
     elseif count == 0 then
         hatchNow.Text = "Nenhum ovo pronto ao alcance"
@@ -3145,7 +3483,7 @@ task.spawn(function()
                 hatching = false
                 local state = ran and ok and (count > 0 and "confirmado" or "sem interação pronta ao alcance")
                     or tostring(ran and reason or ok)
-                if state ~= lastState then print("[Eclosão V70] Auto independente: " .. state) end
+                if state ~= lastState then print("[Eclosão V71] Auto independente: " .. state) end
                 lastState = state
                 if not ran or not ok then delay = .35 end
             end
@@ -3182,7 +3520,7 @@ local function layoutShell()
             math.clamp(shell.Position.X.Offset, 0, math.max(0, view.X - width * scale.Scale)),
             math.clamp(shell.Position.Y.Offset, 0, math.max(0, view.Y - height * scale.Scale)))
     end
-    header.Text = compact and "OVOS // 70" or "CENTRAL // OVOS"
+    header.Text = compact and "OVOS // 71" or "CENTRAL // OVOS"
     header.Size = UDim2.new(1, compact and -52 or -155, 0, compact and 40 or 33)
     terminalSubtitle.Visible = not compact
     content.Visible = not compact
@@ -3202,6 +3540,17 @@ zoomIn.Activated:Connect(function() resize(.1) end)
 gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutShell)
 
 local overview = settingsPage("Visão geral", "Acompanhe as automações e abra os controles pelo menu lateral.")
+do
+    local toggle = arcadeButton(overview, "Auto Fusão · OFF", UDim2.fromOffset(8, 319), UDim2.new(1, -16, 0, 32))
+    toggle.Activated:Connect(function()
+        if auto or looping then
+            collectionStatus.Text = "Pare a Auto Coleta para mudar a Auto Fusão."
+            return
+        end
+        autoFusion = not autoFusion
+        toggle.Text = autoFusion and "Auto Fusão · ON" or "Auto Fusão · OFF"
+    end)
+end
 local pages = {
     { "Visão geral", overview, nil, "00" },
     { "Coleta de ovos", eggsPanel, nil, "01" }, { "Depósito", penPage, nil, "02" },
