@@ -48,6 +48,7 @@ end
 
 local started = os.clock()
 local captures = {}
+local parts, nextPart = nil, 1
 local function capture(index, name, item)
     local lines = { string.format("[FUSÃO] +%.2fs | %s", os.clock() - started, name) }
     local seen = {}
@@ -84,21 +85,44 @@ local function capture(index, name, item)
     end
 
     captures[index] = table.concat(lines, "\n")
+    parts, nextPart = nil, 1
     item.Text = name .. " ✓"
 end
 
 button("1 Aberta", 0, .23, function(item) capture(1, "Aberta", item) end)
 button("2 Selecionado", .23, .23, function(item) capture(2, "Selecionado", item) end)
 button("3 Resultado", .46, .23, function(item) capture(3, "Resultado", item) end)
-button("Copiar", .69, .23, function(item)
+button("Copiar parte", .69, .23, function(item)
     if not (captures[1] and captures[2] and captures[3]) then
         item.Text = "Capture 1–3"
         return
     end
-    local text = table.concat(captures, "\n\n") .. "\n[FUSÃO] FIM"
-    local copy = setclipboard or toclipboard
-    local copied = type(copy) == "function" and pcall(copy, text)
-    local saved = type(writefile) == "function" and pcall(writefile, "mapa_fusao.txt", text)
-    item.Text = copied and "Copiado ✓" or (saved and "TXT salvo ✓" or "Falha ao exportar")
+    local copy = type(setclipboard) == "function" and setclipboard or toclipboard
+    if type(copy) ~= "function" then
+        item.Text = "Cópia indisponível"
+        return
+    end
+    if not parts then
+        parts = {}
+        local lines, size = {}, 0
+        local report = table.concat(captures, "\n\n") .. "\n[FUSÃO] FIM\n"
+        for line in report:gmatch("[^\n]*\n") do
+            if size + #line > 1400 and size > 0 then
+                parts[#parts + 1] = table.concat(lines)
+                lines, size = {}, 0
+            end
+            lines[#lines + 1] = line
+            size = size + #line
+        end
+        if size > 0 then parts[#parts + 1] = table.concat(lines) end
+    end
+    local header = string.format("[FUSÃO] PARTE %d/%d\n", nextPart, #parts)
+    local ok, result = pcall(copy, header .. parts[nextPart])
+    if not ok or result == false then
+        item.Text = "Falhou · tente de novo"
+        return
+    end
+    item.Text = string.format("Copiada %d/%d", nextPart, #parts)
+    nextPart = nextPart % #parts + 1
 end)
 button("×", .92, .08, function() gui:Destroy() end)
