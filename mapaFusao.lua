@@ -49,39 +49,78 @@ end
 local started = os.clock()
 local captures = {}
 local parts, nextPart = nil, 1
-local function capture(index, name, item)
-    local lines = { string.format("[FUSÃO] +%.2fs | %s", os.clock() - started, name) }
-    local seen = {}
-    local function record(object)
-        if #lines >= 140 or seen[object] or not visible(object) then return end
-        seen[object] = true
-        lines[#lines + 1] = describe(object)
-    end
-
-    for _, object in ipairs(playerGui:GetDescendants()) do
-        if #lines >= 140 then break end
-        if object:IsA("TextLabel") or object:IsA("TextButton") then
-            local value = object.Text:lower()
-            local count = value:match("^%s*%d+%s*[x×]%s*$")
-                or value:match("^%s*x%s*%d+%s*$") or value:match("%d+%s*/%s*%d+")
-            if (count or value:find("clon", 1, true) or value:find("fus", 1, true)
-                or value:find("invent", 1, true) or value:find("confirm", 1, true)
-                or value:find("sucesso", 1, true)) and visible(object) then
-                record(object)
-                local card = object:IsA("GuiButton") and object
-                    or object:FindFirstAncestorWhichIsA("GuiButton") or object.Parent
-                if card then
-                    record(card)
-                    local children = card:GetChildren()
-                    for i = 1, math.min(#children, 10) do
-                        local child = children[i]
-                        if child:IsA("GuiButton") or child:IsA("ImageLabel") or child:IsA("TextLabel") then
-                            record(child)
-                        end
-                    end
-                end
+local function describeCard(card, index)
+    local fields = { "CARD " .. index .. " | ordem=" .. card.LayoutOrder }
+    for _, object in ipairs(card:GetDescendants()) do
+        if visible(object) then
+            if object:IsA("TextLabel") or object:IsA("TextButton") then
+                fields[#fields + 1] = object.Name .. "=" .. object.Text:gsub("%s+", " ")
+            elseif object:IsA("ImageLabel") or object:IsA("ImageButton") then
+                fields[#fields + 1] = object.Name .. "=" .. object.Image
             end
         end
+    end
+    for _, key in ipairs({ "PetId", "Variant", "Tier", "Count", "Selected", "Evolution" }) do
+        local value = card:GetAttribute(key)
+        if value ~= nil then fields[#fields + 1] = key .. "=" .. tostring(value) end
+    end
+    return table.concat(fields, " | ")
+end
+
+local clicks = {}
+local connections = {}
+local function observeButton(object)
+    if not object:IsA("GuiButton") then return end
+    connections[#connections + 1] = object.Activated:Connect(function()
+        if visible(object) and #clicks < 30 then
+            local detail = describe(object)
+            if object.Parent and object.Parent.Name == "ScrollingFrame" then
+                detail = detail .. " | " .. describeCard(object, object.LayoutOrder)
+            end
+            clicks[#clicks + 1] = string.format("+%.2fs | %s", os.clock() - started, detail)
+        end
+    end)
+end
+
+gui.Destroying:Connect(function()
+    for _, connection in ipairs(connections) do connection:Disconnect() end
+end)
+
+local function capture(index, name, item)
+    local fusion = playerGui:FindFirstChild("Fusion")
+    local panel = fusion and fusion:FindFirstChild("Panel")
+    local body = panel and panel:FindFirstChild("Body")
+    local list = body and body:FindFirstChild("ScrollingFrame")
+    if not panel or not visible(panel) then
+        item.Text = "Abra a máquina"
+        return
+    end
+    if index == 1 then
+        for _, connection in ipairs(connections) do connection:Disconnect() end
+        table.clear(connections)
+        table.clear(clicks)
+        table.clear(captures)
+        connections[#connections + 1] = fusion.DescendantAdded:Connect(observeButton)
+        for _, object in ipairs(fusion:GetDescendants()) do observeButton(object) end
+    end
+
+    local lines = { string.format("[FUSÃO] +%.2fs | %s", os.clock() - started, name) }
+    local cardIndex = 0
+    for _, card in ipairs(list and list:GetChildren() or {}) do
+        if card:IsA("GuiButton") and visible(card) then
+            cardIndex = cardIndex + 1
+            lines[#lines + 1] = describeCard(card, cardIndex)
+        end
+    end
+    for _, object in ipairs(panel:GetDescendants()) do
+        if visible(object) and not (list and object:IsDescendantOf(list))
+            and (object:IsA("GuiButton") or object:IsA("TextLabel") or object:IsA("ImageLabel")) then
+            lines[#lines + 1] = describe(object):sub(#playerGui:GetFullName() + 2)
+        end
+    end
+    if index == 3 then
+        lines[#lines + 1] = "[AÇÕES NA MÁQUINA]"
+        for _, click in ipairs(clicks) do lines[#lines + 1] = click end
     end
 
     captures[index] = table.concat(lines, "\n")
