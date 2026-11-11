@@ -1,4 +1,5 @@
-local playerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local previous = playerGui:FindFirstChild("TesteFusao")
 if previous then previous:Destroy() end
 
@@ -20,8 +21,8 @@ local function control(class, text, y)
     return item
 end
 
-local test = control("TextButton", "Testar 1 fusão", 0)
-local status = control("TextLabel", "Abra a máquina de fusão no jogo.", 46)
+local test = control("TextButton", "Ir à máquina e testar 1 fusão", 0)
+local status = control("TextLabel", "Comece na base, perto da área de lançamento.", 46)
 local badge = { H = "HYPER", M = "MEGA", U = "ULTRA" }
 local nextTier = { BASE = "HYPER", HYPER = "MEGA", MEGA = "ULTRA" }
 local busy, uncertain = false, false
@@ -88,12 +89,87 @@ local function waitFor(check)
     return false
 end
 
+local function machinePrompt(root)
+    local nearest, target, distance
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("ProximityPrompt") and object.Enabled
+            and normalize(object.ObjectText):lower() == "máquina de fusão"
+            and normalize(object.ActionText):lower() == "abrir" then
+            local parent = object.Parent
+            local point = parent and ((parent:IsA("Attachment") and parent.WorldPosition)
+                or (parent:IsA("BasePart") and parent.Position)
+                or (parent:IsA("Model") and parent:GetPivot().Position))
+            if point then
+                local gap = (root.Position - point).Magnitude
+                if not distance or gap < distance then nearest, target, distance = object, point, gap end
+            end
+        end
+    end
+    return nearest, target
+end
+
+local function openMachine()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid then return false, "Personagem indisponível." end
+    local prompt, point = machinePrompt(root)
+    if not prompt then return false, "Aviso da máquina não encontrado. Comece perto da área de lançamento." end
+    local function inReach()
+        return (root.Position - point).Magnitude <= prompt.MaxActivationDistance
+    end
+    if not inReach() then
+        status.Text = "Indo até a máquina..."
+        local offset = root.Position - point
+        local flat = Vector3.new(offset.X, 0, offset.Z)
+        local goal = point + (flat.Magnitude > .1 and flat.Unit or Vector3.zero)
+            * math.max(1, prompt.MaxActivationDistance * .55)
+        local path = game:GetService("PathfindingService"):CreatePath()
+        path:ComputeAsync(root.Position, goal)
+        if path.Status ~= Enum.PathStatus.Success then return false, "Sem rota até a máquina." end
+        for _, waypoint in ipairs(path:GetWaypoints()) do
+            if inReach() then break end
+            if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+            humanoid:MoveTo(waypoint.Position)
+            if not waitFor(function()
+                return inReach() or (root.Position - waypoint.Position).Magnitude <= 3
+            end) then
+                humanoid:MoveTo(root.Position)
+                return false, "Caminhada interrompida antes da máquina."
+            end
+        end
+        humanoid:MoveTo(root.Position)
+    end
+    if not inReach() or not prompt.Enabled or not prompt:IsDescendantOf(workspace)
+        or not gui.Parent or player.Character ~= character then
+        return false, "Aviso da máquina fora de alcance."
+    end
+    status.Text = "Abrindo a máquina..."
+    prompt:InputHoldBegin()
+    task.wait(prompt.HoldDuration + .1)
+    prompt:InputHoldEnd()
+    if not waitFor(function()
+        local fusion = playerGui:FindFirstChild("Fusion")
+        local panel = fusion and fusion:FindFirstChild("Panel")
+        return panel and visible(panel)
+    end) then
+        return false, "O jogo não confirmou a abertura da máquina."
+    end
+    return true
+end
+
 test.Activated:Connect(function(input)
     if busy or uncertain then return end
     busy = true
     local ok, message = pcall(function()
         local fusion = playerGui:FindFirstChild("Fusion")
         local panel = fusion and fusion:FindFirstChild("Panel")
+        if not panel or not visible(panel) then
+            local opened, reason = openMachine()
+            if not opened then return reason end
+            fusion = playerGui:FindFirstChild("Fusion")
+            panel = fusion and fusion:FindFirstChild("Panel")
+        end
         local body = panel and panel:FindFirstChild("Body")
         local list = body and body:FindFirstChild("ScrollingFrame")
         local details = body and body:FindFirstChild("Frame")
